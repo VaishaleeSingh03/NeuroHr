@@ -1,0 +1,14 @@
+# NeuroHR AI — Netlify (Next.js 14 App Router)
+# Repo: VaishaleeSingh03/NeuroHr
+
+[build]
+  base = "frontend"
+  command = "npm ci && npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NPM_FLAGS = "--legacy-peer-deps"
