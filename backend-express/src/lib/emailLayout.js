@@ -1,20 +1,24 @@
 /**
- * Responsive HTML email shell — Tailwind-aligned tokens (#00B8B8 aqua, #0D4F4F heading, #FFF4DE cream).
+ * Responsive HTML email shell — matches NeuroHR app theme (tailwind: aqua, cream, teal).
  * Uses table layout + @media queries (email clients do not support Tailwind utility classes).
  */
 
 const BRAND = {
   aqua: '#00B8B8',
   aquaDark: '#0D4F4F',
+  aquaMid: '#1A6B6B',
   aquaLight: '#7FE7DC',
+  aquaBg: '#E6FAF8',
   cream: '#FFF4DE',
   creamBorder: '#F6E6C2',
-  body: '#334155',
-  muted: '#64748b',
-  violet: '#7C6EF0',
-  violetBg: '#EEEDFE',
-  green: '#059669',
-  greenBg: '#ecfdf5',
+  creamMuted: '#FBF0DC',
+  body: '#1A6B6B',
+  heading: '#0D4F4F',
+  muted: 'rgba(13, 79, 79, 0.55)',
+  success: '#008B8B',
+  successBg: '#E6FAF8',
+  warn: '#B45309',
+  warnBg: '#FFF4DE',
 };
 
 const SUBTITLES = {
@@ -41,10 +45,37 @@ function emailInfoCard(innerHtml) {
   return `
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-card" style="margin:16px 0;">
   <tr>
-    <td class="email-card-inner" style="background:${BRAND.violetBg};padding:16px 18px;border-radius:10px;border-left:4px solid ${BRAND.violet};font-size:14px;line-height:1.6;color:${BRAND.body};">
+    <td class="email-card-inner" style="background:${BRAND.aquaBg};padding:16px 18px;border-radius:10px;border-left:4px solid ${BRAND.aqua};font-size:14px;line-height:1.6;color:${BRAND.body};">
       ${innerHtml}
     </td>
   </tr>
+</table>`;
+}
+
+/** Highlight block for offers, compensation, key facts */
+function emailHighlightCard(innerHtml) {
+  return `
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" class="email-card" style="margin:16px 0;">
+  <tr>
+    <td style="background:${BRAND.creamMuted};padding:16px 18px;border-radius:10px;border:1px solid ${BRAND.creamBorder};border-left:4px solid ${BRAND.aqua};font-size:14px;line-height:1.6;color:${BRAND.body};">
+      ${innerHtml}
+    </td>
+  </tr>
+</table>`;
+}
+
+/** Standard NeuroHR details table for Groq + templates */
+function emailDetailsTable(rows) {
+  const bodyRows = (rows || [])
+    .map(([label, value]) => `
+      <tr>
+        <td style="padding:10px 12px;border:1px solid ${BRAND.creamBorder};background:${BRAND.aquaBg};font-weight:600;color:${BRAND.heading};vertical-align:top;width:38%;">${label}</td>
+        <td style="padding:10px 12px;border:1px solid ${BRAND.creamBorder};color:${BRAND.body};word-break:break-word;">${value ?? '—'}</td>
+      </tr>`)
+    .join('');
+  return `
+<table class="email-stack" role="presentation" style="width:100%;max-width:100%;border-collapse:collapse;font-size:14px;margin:16px 0;">
+  ${bodyRows}
 </table>`;
 }
 
@@ -96,15 +127,16 @@ function buildResponsiveEmail({
     }
   </style>
 </head>
-<body style="margin:0;padding:0;background-color:#e8f6f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+<body style="margin:0;padding:0;background:linear-gradient(135deg,${BRAND.aquaLight} 0%,${BRAND.cream} 100%);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${title}</div>
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color:#e8f6f6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(135deg,${BRAND.aquaLight} 0%,${BRAND.cream} 100%);">
     <tr>
       <td align="center" class="email-outer-pad" style="padding:20px 12px;">
         <table role="presentation" class="email-container" width="600" cellspacing="0" cellpadding="0"
           style="max-width:600px;width:100%;border-collapse:collapse;">
           <tr>
-            <td class="email-header-pad" style="background:linear-gradient(135deg,${BRAND.aqua},${BRAND.aquaDark});padding:22px 24px;border-radius:12px 12px 0 0;">
+            <td class="email-header-pad" style="background:linear-gradient(180deg,${BRAND.aquaDark} 0%,${BRAND.aquaMid} 100%);padding:22px 24px;border-radius:12px 12px 0 0;">
+              <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:${BRAND.aquaLight};">NeuroHR AI</p>
               <h1 class="email-h1" style="margin:0;font-size:22px;font-weight:700;color:#ffffff;line-height:1.25;">${title}</h1>
               <p class="email-sub" style="margin:8px 0 0;font-size:13px;color:${BRAND.aquaLight};">${subtitle}</p>
             </td>
@@ -125,10 +157,24 @@ function buildResponsiveEmail({
 </html>`;
 }
 
-/** Post-process Groq fragment: ensure tables stack on mobile */
+/** Post-process Groq fragment: strip full documents, normalize colors, mobile tables */
 function enhanceGroqFragment(html) {
   if (!html || typeof html !== 'string') return html;
-  return html
+  let out = html.trim();
+  const bodyMatch = out.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch) out = bodyMatch[1];
+  out = out
+    .replace(/<\/?(?:html|head|body)[^>]*>/gi, '')
+    .replace(/#7C6EF0/gi, BRAND.aqua)
+    .replace(/#EEEDFE/gi, BRAND.aquaBg)
+    .replace(/#4ade80/gi, BRAND.aqua)
+    .replace(/#f0fff4/gi, BRAND.successBg)
+    .replace(/#059669/gi, BRAND.success)
+    .replace(/#334155/gi, BRAND.body)
+    .replace(/#64748b/gi, BRAND.muted)
+    .replace(/background:\s*#007bff/gi, `background:${BRAND.aqua}`)
+    .replace(/background-color:\s*#007bff/gi, `background-color:${BRAND.aqua}`);
+  return out
     .replace(/<table(?![^>]*class=)/gi, '<table class="email-stack"')
     .replace(/width:\s*100%/gi, 'width:100%;max-width:100%');
 }
@@ -138,5 +184,7 @@ module.exports = {
   buildResponsiveEmail,
   emailButton,
   emailInfoCard,
+  emailHighlightCard,
+  emailDetailsTable,
   enhanceGroqFragment,
 };

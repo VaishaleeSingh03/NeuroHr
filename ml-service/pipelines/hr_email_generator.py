@@ -15,11 +15,11 @@ _EMAIL_STYLES = (
 
     "Output a BODY FRAGMENT only (no <html>/<head>/<body> — the app wraps it in a responsive shell). "
 
-    "Brand (Tailwind-aligned): aqua #00B8B8, heading #0D4F4F, cream #FFF4DE, body text #334155. "
+    "NeuroHR brand (match the web app): aqua #00B8B8, heading #0D4F4F, body #1A6B6B, cream #FFF4DE, accent bg #E6FAF8. "
 
     "Use inline styles on every element. Font stack: -apple-system, Segoe UI, sans-serif. "
 
-    "Paragraphs: margin 0 0 14px; line-height 1.65; font-size 15px. "
+    "Paragraphs: margin 0 0 14px; line-height 1.65; font-size 15px; color #1A6B6B. "
 
     "Mobile-friendly: tables width 100%; max-width 100%; word-break break-word on long URLs/emails. "
 
@@ -27,7 +27,9 @@ _EMAIL_STYLES = (
 
     "border-radius 10px; font-weight 700; text-decoration none. "
 
-    "Info blocks: background #EEEDFE; padding 16px; border-radius 10px; border-left 4px solid #7C6EF0."
+    "Info blocks: background #E6FAF8; padding 16px; border-radius 10px; border-left 4px solid #00B8B8. "
+
+    "Do NOT use purple/violet (#7C6EF0) or generic bootstrap blue."
 
 )
 
@@ -39,11 +41,11 @@ _DETAILS_TABLE = (
 
     "border-collapse:collapse;font-size:14px;margin:16px 0'> — stacks label/value on mobile. "
 
-    "Each row: <tr><td style='padding:10px 12px;border:1px solid #e2e8f0;background:#f8fafc;"
+    "Each row: <tr><td style='padding:10px 12px;border:1px solid #F6E6C2;background:#E6FAF8;color:#0D4F4F;"
 
     "font-weight:600;vertical-align:top'>Label</td>"
 
-    "<td style='padding:10px 12px;border:1px solid #e2e8f0;word-break:break-word'>Value</td></tr>. "
+    "<td style='padding:10px 12px;border:1px solid #F6E6C2;color:#1A6B6B;word-break:break-word'>Value</td></tr>. "
 
     "Populate EVERY relevant field from Context JSON — do not omit candidate/employee details provided."
 

@@ -5,14 +5,19 @@ const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 const EMAIL_TIMEOUT_MS = 12000;
 
 const EMAIL_STYLES = (
-  'Output a BODY FRAGMENT only (no <html>/<head>/<body>). '
-  + 'Brand: aqua #00B8B8, heading #0D4F4F, cream #FFF4DE, body #334155. '
-  + 'Inline styles; mobile-friendly tables width 100%; word-break break-word.'
+  'Output a BODY FRAGMENT only (no <html>/<head>/<body> — NeuroHR wraps it). '
+  + 'NeuroHR brand: aqua #00B8B8, heading #0D4F4F, body #1A6B6B, cream #FFF4DE, accent bg #E6FAF8. '
+  + 'Inline styles; font -apple-system, Segoe UI, sans-serif. '
+  + 'Paragraphs: margin 0 0 14px; line-height 1.65; font-size 15px; color #1A6B6B. '
+  + 'Info blocks: background #E6FAF8; padding 16px; border-radius 10px; border-left 4px solid #00B8B8. '
+  + 'CTA links/buttons: background #00B8B8; color #fff; padding 14px 28px; border-radius 10px; font-weight 700. '
+  + 'Do NOT use purple/violet (#7C6EF0) or generic blue (#007bff). Mobile-friendly tables width 100%.'
 );
 
 const DETAILS_TABLE = (
-  'Include <table class="email-stack" role="presentation" style="width:100%;border-collapse:collapse"> '
-  + 'with label/value rows for every relevant Context field.'
+  'Include <table class="email-stack" role="presentation" style="width:100%;border-collapse:collapse;margin:16px 0"> '
+  + 'Label cells: background #E6FAF8; color #0D4F4F; font-weight 600; padding 10px 12px; border 1px solid #F6E6C2. '
+  + 'Value cells: color #1A6B6B; padding 10px 12px; border 1px solid #F6E6C2.'
 );
 
 const HR_TO_HR = (
