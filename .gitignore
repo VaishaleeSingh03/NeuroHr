@@ -30,9 +30,10 @@ Thumbs.db
 *.log
 logs/
 
-# Uploads & Models
+# Uploads & ML artifacts (do not ignore backend-express/src/models — Mongoose schemas)
 uploads/
-models/
+ml-service/models/
+ml-models/
 *.pkl
 *.h5
 *.pt
