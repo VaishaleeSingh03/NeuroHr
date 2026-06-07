@@ -105,6 +105,53 @@ async function groqJson(system, user, { maxTokens = 2048, model } = {}) {
   return parsed;
 }
 
+function geminiUrl() {
+  const model = config.geminiModel || 'gemini-2.0-flash';
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
+
+function geminiHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  const key = config.geminiApiKey || '';
+  if (key) headers['x-goog-api-key'] = key;
+  return headers;
+}
+
+async function geminiJson(system, user, { maxTokens = 2048 } = {}) {
+  if (!config.geminiApiKey) throw new Error('GEMINI_API_KEY not configured');
+  const { data } = await axios.post(
+    geminiUrl(),
+    {
+      systemInstruction: { parts: [{ text: `${system} Reply with ONE valid JSON object only.` }] },
+      contents: [{ role: 'user', parts: [{ text: user }] }],
+      generationConfig: {
+        temperature: 0.35,
+        maxOutputTokens: maxTokens,
+        responseMimeType: 'application/json',
+      },
+    },
+    { headers: geminiHeaders(), timeout: EMAIL_TIMEOUT_MS },
+  );
+  const parsed = extractJson(data?.candidates?.[0]?.content?.parts?.[0]?.text);
+  if (!parsed) throw new Error('Gemini returned non-JSON email payload');
+  return parsed;
+}
+
+async function llmJson(system, user, opts = {}) {
+  const jsonSystem = `${system} Reply with ONE valid JSON object only.`;
+  if (config.groqApiKey) {
+    try {
+      return { ...(await groqJson(jsonSystem, user, opts)), generated_by: 'groq_direct' };
+    } catch (err) {
+      if (!config.geminiApiKey) throw err;
+    }
+  }
+  if (config.geminiApiKey) {
+    return { ...(await geminiJson(jsonSystem, user, opts)), generated_by: 'gemini_direct' };
+  }
+  throw new Error('GROQ_API_KEY or GEMINI_API_KEY required');
+}
+
 async function generateHrEmailDirect(emailType, context = {}) {
   const instruction = EMAIL_INSTRUCTIONS[emailType]
     || 'Write a professional HR email with a details table.';
@@ -118,7 +165,7 @@ async function generateHrEmailDirect(emailType, context = {}) {
   );
   const maxTokens = emailType === 'payslip' ? 2560 : 2048;
   const model = config.groqModelStrong || config.groqModelFast;
-  const result = await groqJson(
+  const result = await llmJson(
     'Expert HR communications writer. Output JSON only. Keep html concise.',
     prompt,
     { maxTokens, model },
@@ -130,8 +177,8 @@ async function generateHrEmailDirect(emailType, context = {}) {
     subject: String(result.subject).trim(),
     html: String(result.html).trim(),
     preview_text: String(result.preview_text || '').trim(),
-    generated_by: 'groq_direct',
+    generated_by: result.generated_by || 'groq_direct',
   };
 }
 
-module.exports = { generateHrEmailDirect, groqJson };
+module.exports = { generateHrEmailDirect, groqJson, geminiJson, llmJson };
