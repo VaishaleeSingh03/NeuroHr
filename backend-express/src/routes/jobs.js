@@ -16,6 +16,7 @@ const {
   notifyHumanInterviewScheduled, notifyFinalDecision, notifyOfferResponse,
 } = require('../lib/notify');
 const { ensureCandidateForUser, resolveUserIdForCandidate } = require('../lib/candidateLink');
+const { isAwaitingOfferResponse, isOfferResponseIdempotent } = require('../lib/offerFlow');
 const { RECRUITER_ROLES, RESUME_VIEW_ROLES } = require('../lib/roles');
 const { createInterviewEvent, isCalendarConfigured } = require('../lib/googleCalendar');
 
@@ -736,7 +737,7 @@ router.post('/applications/:appId/final-decision', auth(RECRUITER_ROLES), async 
   });
 });
 
-router.post('/applications/:appId/offer-response', auth(['candidate']), async (req, res) => {
+router.post('/applications/:appId/offer-response', auth(['candidate', 'employee']), async (req, res) => {
   const appId = parseInt(req.params.appId, 10);
   const candidate = await ensureCandidateForUser(req.user);
   const app = await JobApplication.findOne({
@@ -757,31 +758,71 @@ router.post('/applications/:appId/offer-response', auth(['candidate']), async (r
   if (fd.decision !== 'selected') {
     return res.status(400).json({ error: 'No offer available for this application' });
   }
-  if (fd.offerResponse && fd.offerResponse !== 'pending') {
-    return res.status(400).json({ error: `Offer already ${fd.offerResponse}` });
+
+  const candidateNote = String(req.body.message || req.body.note || '').trim();
+  const io = req.app.get('io');
+  const { onboardEmployeeFromApplication } = require('../lib/onboardEmployee');
+
+  if (isOfferResponseIdempotent(app, response)) {
+    let onboardResult = null;
+    if (response === 'accepted') {
+      app.userId = app.userId || req.user.id;
+      await User.updateOne({ id: req.user.id }, { $set: { role: 'employee' } });
+      onboardResult = await onboardEmployeeFromApplication(app, {
+        gender: String(req.body.gender || 'other').toLowerCase(),
+        io,
+        userId: req.user.id,
+      });
+    }
+    const obj = app.toObject();
+    delete obj.resumeData;
+    return res.json({
+      ...sanitizeApplication(obj),
+      hasResume: hasStoredResume(app),
+      employee_onboarded: Boolean(onboardResult?.employee),
+      employee_id: onboardResult?.employee?.id,
+      message: response === 'accepted'
+        ? (onboardResult?.employee
+          ? `Offer already accepted — employee record linked (ID ${onboardResult.employee.id})`
+          : 'Offer already accepted')
+        : 'Offer already declined',
+    });
   }
-  if (app.status !== 'offer_pending') {
+
+  if (!isAwaitingOfferResponse(app)) {
+    if (fd.offerResponse && fd.offerResponse !== 'pending') {
+      return res.status(400).json({ error: `Offer already ${fd.offerResponse}` });
+    }
     return res.status(400).json({ error: 'Offer is no longer pending' });
   }
 
-  const candidateNote = String(req.body.message || req.body.note || '').trim();
+  if (!app.finalDecision.offerResponse) {
+    app.finalDecision.offerResponse = 'pending';
+  }
+
+  app.userId = app.userId || req.user.id;
   const now = new Date();
   app.finalDecision.offerResponse = response;
   app.finalDecision.offerRespondedAt = now;
   if (candidateNote) app.finalDecision.candidateNote = candidateNote;
 
   let onboardResult = null;
-  const io = req.app.get('io');
 
   if (response === 'accepted') {
     app.status = 'hired';
     await app.save();
     await Candidate.updateOne({ id: app.candidateId }, { $set: { status: 'employee' } });
-    const { onboardEmployeeFromApplication } = require('../lib/onboardEmployee');
-    onboardResult = await onboardEmployeeFromApplication(app, {
-      gender: String(req.body.gender || 'other').toLowerCase(),
-      io,
-    });
+    await User.updateOne({ id: req.user.id }, { $set: { role: 'employee' } });
+    try {
+      onboardResult = await onboardEmployeeFromApplication(app, {
+        gender: String(req.body.gender || 'other').toLowerCase(),
+        io,
+        userId: req.user.id,
+      });
+    } catch (err) {
+      console.error(`[onboard] Failed for app ${app.id}:`, err);
+      onboardResult = { error: err.message || 'onboard_failed' };
+    }
   } else {
     app.status = 'offer_declined';
     await app.save();
@@ -798,13 +839,16 @@ router.post('/applications/:appId/offer-response', auth(['candidate']), async (r
     hasResume: hasStoredResume(app),
     hr_email_sent: emailResult.hrEmailSent,
     hr_email_error: emailResult.hrEmailError || null,
-    employee_onboarded: onboardResult?.created || false,
+    employee_onboarded: Boolean(onboardResult?.employee),
     employee_id: onboardResult?.employee?.id,
     leave_entitlements: onboardResult?.employee?.leaveEntitlements,
+    onboard_error: onboardResult?.error || null,
     message: response === 'accepted'
       ? (onboardResult?.employee
         ? `Offer accepted — you are now an employee (ID ${onboardResult.employee.id})`
-        : 'Offer accepted — onboarding in progress')
+        : onboardResult?.error
+          ? `Offer accepted — employee profile pending (${onboardResult.error})`
+          : 'Offer accepted — onboarding in progress')
       : (emailResult.hrEmailSent
         ? 'Offer declined — recorded on your portal'
         : 'Offer declined — recorded on portal (HR notification email failed)'),

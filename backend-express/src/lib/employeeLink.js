@@ -1,11 +1,23 @@
 const { User, Employee, Candidate } = require('../models');
 const { notifyUsers } = require('./notify');
+const { normalizeEmail } = require('./emailUtils');
 
-async function linkUserAsEmployee(email, employeeRecordId) {
-  const normalized = String(email || '').trim().toLowerCase();
-  if (!normalized) return null;
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
-  const user = await User.findOne({ email: normalized }).lean();
+async function linkUserAsEmployee(email, employeeRecordId, explicitUserId) {
+  let user = null;
+  if (explicitUserId) {
+    user = await User.findOne({ id: explicitUserId }).lean();
+  }
+  if (!user) {
+    const normalized = normalizeEmail(email);
+    if (!normalized) return null;
+    user = await User.findOne({
+      email: new RegExp(`^${escapeRegex(normalized)}$`, 'i'),
+    }).lean();
+  }
   if (!user) return null;
 
   await User.updateOne({ id: user.id }, { $set: { role: 'employee' } });

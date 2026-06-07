@@ -279,10 +279,11 @@ export function isCandidateRejected(app: PipelineApplication | null | undefined)
 
 export function isOfferPending(app: PipelineApplication | null | undefined): boolean {
   if (!app || isCandidateRejected(app)) return false;
-  return (
-    app.status === "offer_pending"
-    || (app.finalDecision?.decision === "selected" && app.finalDecision?.offerResponse === "pending")
-  );
+  if (app.status === "hired" || app.finalDecision?.offerResponse === "accepted") return false;
+  if (app.status === "offer_declined" || app.finalDecision?.offerResponse === "rejected") return false;
+  const fd = app.finalDecision;
+  if (fd?.decision !== "selected") return false;
+  return !fd.offerResponse || fd.offerResponse === "pending";
 }
 
 

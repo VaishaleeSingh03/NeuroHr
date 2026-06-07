@@ -22,9 +22,10 @@ function parseSalaryNumber(salaryStr) {
 
 
 
-async function onboardEmployeeFromApplication(app, { gender = 'other', employmentType, io } = {}) {
+async function onboardEmployeeFromApplication(app, { gender = 'other', employmentType, io, userId } = {}) {
 
   const email = (app.candidateEmail || '').toLowerCase();
+  const linkedUserId = userId || app.userId;
 
   if (!email) return { error: 'no_candidate_email' };
 
@@ -34,15 +35,13 @@ async function onboardEmployeeFromApplication(app, { gender = 'other', employmen
 
   if (existing) {
 
-    await linkUserAsEmployee(email, existing.id);
-
-    if (app.userId) await Employee.updateOne({ id: existing.id }, { $set: { userId: app.userId } });
+    await linkUserAsEmployee(email, existing.id, linkedUserId);
 
     await markCandidateAsEmployee(app.candidateId, existing.id);
 
-    if (app.userId) {
+    if (linkedUserId) {
 
-      await User.updateOne({ id: app.userId }, { $set: { role: 'employee' } });
+      await User.updateOne({ id: linkedUserId }, { $set: { role: 'employee' } });
 
     }
 
@@ -120,7 +119,7 @@ async function onboardEmployeeFromApplication(app, { gender = 'other', employmen
 
     employeeId: `EMP${String(id).padStart(5, '0')}`,
 
-    userId: app.userId || undefined,
+    userId: linkedUserId || undefined,
 
     personalDetails: {
 
@@ -162,13 +161,13 @@ async function onboardEmployeeFromApplication(app, { gender = 'other', employmen
 
   const empObj = employee.toObject();
 
-  await linkUserAsEmployee(email, empObj.id);
+  await linkUserAsEmployee(email, empObj.id, linkedUserId);
 
-  if (app.userId) {
+  if (linkedUserId) {
 
-    await User.updateOne({ id: app.userId }, { $set: { role: 'employee' } });
+    await User.updateOne({ id: linkedUserId }, { $set: { role: 'employee' } });
 
-    await Employee.updateOne({ id: empObj.id }, { $set: { userId: app.userId } });
+    await Employee.updateOne({ id: empObj.id }, { $set: { userId: linkedUserId } });
 
   }
 

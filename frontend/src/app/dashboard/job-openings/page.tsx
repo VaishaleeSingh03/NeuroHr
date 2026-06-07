@@ -185,6 +185,9 @@ export default function JobOpeningsPage() {
         }
       } else {
         toast.success(payload.message || "Offer accepted");
+        if ((data as { onboard_error?: string }).onboard_error) {
+          toast.error(`Employee profile pending: ${(data as { onboard_error?: string }).onboard_error}`, { duration: 6000 });
+        }
       }
       dispatchNotificationsRefresh();
       load();
