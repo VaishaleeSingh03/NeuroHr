@@ -94,8 +94,13 @@ router.post('/generate-from-kb', auth(RECRUITER_ROLES), async (req, res) => {
     });
     res.status(201).json(normalizeJob(job.toObject()));
   } catch (err) {
-    res.status(err.response?.status || 500).json({
+    const status = err.status || err.response?.status || 500;
+    console.error('[jobs] generate-from-kb failed:', err.message);
+    res.status(status).json({
       error: err.message || 'JD generation from knowledge base failed. Ensure ML service and GROQ_API_KEY are set.',
+      hint: status === 503
+        ? 'Wake ML at /health, confirm GROQ_API_KEY on neurohr service, and retry.'
+        : undefined,
     });
   }
 });

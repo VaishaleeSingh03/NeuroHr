@@ -313,6 +313,56 @@ function recruiterMessage({ name, jobTitle, message }) {
   };
 }
 
+function offerAcceptedHr({
+  candidateName, jobTitle, candidateNote, respondedAt, actionRequired,
+}) {
+  return {
+    subject: `Offer accepted — ${candidateName} (${jobTitle})`,
+    html: wrapAgentHtml('Offer Accepted', `
+      <p><strong>${candidateName}</strong> has <strong>accepted</strong> the offer for <strong>${jobTitle}</strong>.</p>
+      ${candidateNote && candidateNote !== '—' ? `<p><strong>Candidate note:</strong> ${candidateNote}</p>` : ''}
+      ${respondedAt ? `<p><strong>Responded:</strong> ${respondedAt}</p>` : ''}
+      <p><strong>Action required:</strong> ${actionRequired || 'Complete onboarding and assign manager.'}</p>
+      ${btn(`${config.appUrl}/dashboard/applications`, 'Open Applications')}
+    `),
+  };
+}
+
+function offerDeclinedHr({
+  candidateName, jobTitle, candidateNote, respondedAt, actionRequired,
+}) {
+  return {
+    subject: `Offer declined — ${candidateName} (${jobTitle})`,
+    html: wrapAgentHtml('Offer Declined', `
+      <p><strong>${candidateName}</strong> has <strong>declined</strong> the offer for <strong>${jobTitle}</strong>.</p>
+      ${candidateNote && candidateNote !== '—' ? `<p><strong>Candidate note:</strong> ${candidateNote}</p>` : ''}
+      ${respondedAt ? `<p><strong>Responded:</strong> ${respondedAt}</p>` : ''}
+      <p><strong>Action required:</strong> ${actionRequired || 'Consider reopening the role or contacting backup candidates.'}</p>
+      ${btn(`${config.appUrl}/dashboard/applications`, 'Open Applications')}
+    `),
+  };
+}
+
+function reimbursementRequest({
+  name, employeeId, department, designation, category, amount, description, claimId,
+}) {
+  return {
+    subject: `Reimbursement request — ${name} (${amount})`,
+    html: wrapAgentHtml('Reimbursement Request', `
+      <p><strong>${name}</strong> (${employeeId || '—'}) submitted a reimbursement claim.</p>
+      ${emailInfoCard(`
+        <p style="margin:4px 0"><strong>Department:</strong> ${department || '—'} · <strong>Role:</strong> ${designation || '—'}</p>
+        <p style="margin:4px 0"><strong>Category:</strong> ${category || 'general'}</p>
+        <p style="margin:4px 0"><strong>Amount:</strong> ${amount}</p>
+        <p style="margin:4px 0"><strong>Claim #:</strong> ${claimId || '—'}</p>
+      `)}
+      <p><strong>Description</strong></p>
+      <p style="color:#334155;line-height:1.6">${description || '—'}</p>
+      ${btn(`${config.appUrl}/dashboard/payroll`, 'Review in Dashboard')}
+    `),
+  };
+}
+
 module.exports = {
   screeningRejected,
   interviewScheduled,
@@ -327,4 +377,7 @@ module.exports = {
   payrollPayslip,
   leaveRequestHrNotice,
   recruiterMessage,
+  offerAcceptedHr,
+  offerDeclinedHr,
+  reimbursementRequest,
 };

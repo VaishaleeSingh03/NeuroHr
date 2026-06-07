@@ -7,8 +7,8 @@ const client = axios.create({ baseURL: config.mlServiceUrl, timeout: 120000 });
 
 function formatMlError(err) {
   const code = err.code || '';
-  if (code === 'ECONNREFUSED' || code === 'ENOTFOUND') {
-    return 'Cannot connect to ML service on port 8001. Start it: cd ml-service && python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload';
+  if (code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'ECONNRESET') {
+    return 'Cannot reach ML service. Check ML_SERVICE_URL (e.g. https://neurohr.onrender.com) and wake ML with /health.';
   }
   const detail = err.response?.data?.detail;
   if (!detail) return err.message || 'ML service error';
@@ -70,11 +70,19 @@ async function generateJDFromKB({ role_title, experience_level, department, feed
     const { data } = await client.post('/api/jd/generate-from-kb', {
       role_title,
       experience_level: experience_level || '2 years',
-      department: department || 'Engineering',
+      department: department || 'Department',
       feedback: feedback || '',
-    });
+    }, { timeout: 180000 });
     return data;
   } catch (err) {
+    if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
+      const wrapped = new Error(
+        `ML service timed out during JD generation (3 Groq steps). `
+        + `Open ${config.mlServiceUrl}/health first to wake the ML service, then retry.`,
+      );
+      wrapped.status = 503;
+      throw wrapped;
+    }
     throw wrapMlError(err, 'Groq JD generation failed');
   }
 }

@@ -30,9 +30,21 @@ def get_settings() -> Settings:
 
 
 def resolved_knowledgebase_path() -> str:
-    """Resolve KB path relative to project root when .env uses ./knowledgebase."""
+    """Resolve KB path — Render/Docker (/app/knowledgebase), monorepo root, or cwd."""
     settings = get_settings()
-    p = Path(settings.knowledgebase_path or "knowledgebase")
-    if not p.is_absolute():
-        p = _PROJECT_ROOT / p
-    return str(p.resolve())
+    raw = settings.knowledgebase_path or "knowledgebase"
+    p = Path(raw)
+    candidates = []
+    if p.is_absolute():
+        candidates.append(p)
+    else:
+        candidates.extend([
+            Path.cwd() / p,
+            Path(__file__).resolve().parent / p,
+            _PROJECT_ROOT / p,
+            _PROJECT_ROOT.parent / "knowledgebase",
+        ])
+    for candidate in candidates:
+        if candidate.is_dir():
+            return str(candidate.resolve())
+    return str((Path.cwd() / raw).resolve())

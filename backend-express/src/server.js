@@ -64,6 +64,14 @@ io.on('connection', (socket) => {
 
 app.set('io', io);
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[api] Unhandled promise rejection (server stays up):', reason?.message || reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[api] Uncaught exception:', err);
+});
+
 async function start() {
   await connectDB();
   await connectRedis();

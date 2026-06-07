@@ -42,22 +42,24 @@ router.post('/', auth(['employee']), upload.single('receipt'), async (req, res) 
     status: 'pending',
   });
 
+  let emailSent = false;
   const hrEmail = config.hrEmail;
   if (hrEmail) {
-    try {
-      const { buildReimbursementContext } = require('../lib/emailContext');
-      await sendAgentGroqEmail(hrEmail, 'reimbursement_request', buildReimbursementContext(emp, claim.toObject()));
-    } catch (err) {
-      return res.status(503).json({
-        error: `Reimbursement saved but HR email failed: ${err.message}`,
-        claim: claim.toObject(),
-      });
-    }
+    const { buildReimbursementContext } = require('../lib/emailContext');
+    const emailResult = await sendAgentGroqEmail(
+      hrEmail,
+      'reimbursement_request',
+      buildReimbursementContext(emp, claim.toObject()),
+    );
+    emailSent = emailResult.sent;
   }
 
   res.status(201).json({
     ...claim.toObject(),
-    message: 'Reimbursement submitted — HR notified by email',
+    email_sent: emailSent,
+    message: emailSent
+      ? 'Reimbursement submitted — HR notified by email'
+      : 'Reimbursement submitted — saved but HR email could not be sent',
   });
 });
 
