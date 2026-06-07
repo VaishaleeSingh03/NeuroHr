@@ -69,13 +69,13 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-heading">AI Onboarding System</h1>
-        <p className="text-muted mt-1">Auto-generate offer letters, checklists, and 30/60/90 day plans</p>
+    <div className="page-container">
+      <div className="page-header min-w-0">
+        <h1 className="page-title">AI Onboarding System</h1>
+        <p className="page-subtitle">Auto-generate offer letters, checklists, and 30/60/90 day plans</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="split-layout">
         <GlassCard>
           <h3 className="font-bold text-heading mb-4 flex items-center gap-2">
             <UserPlus className="w-5 h-5 text-aqua" /> Generate Plan
@@ -96,7 +96,7 @@ export default function OnboardingPage() {
           </div>
         </GlassCard>
 
-        <div className="lg:col-span-2 space-y-6">
+        <div className="split-layout-main space-y-6">
           {plans.length > 0 && (
             <GlassCard>
               <h3 className="font-bold text-heading mb-3">Past Plans</h3>
@@ -151,7 +151,7 @@ export default function OnboardingPage() {
                 </GlassCard>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="form-grid-3 gap-4">
                 {[plan.day_30_plan, plan.day_60_plan, plan.day_90_plan].map((milestone, i) => (
                   <GlassCard key={i} delay={0.2 + i * 0.1}>
                     <h4 className="font-bold text-heading mb-3 flex items-center gap-2">

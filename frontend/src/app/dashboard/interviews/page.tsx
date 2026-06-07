@@ -642,7 +642,7 @@ export default function InterviewsPage() {
               </p>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-thin">
+            <div className="mobile-scroll-x">
               {TOPIC_LABELS.map((label, i) => {
                 const activeIdx = getActiveTopicIndex(currentQ, questions.length);
                 const cls = i < activeIdx
@@ -865,7 +865,7 @@ export default function InterviewsPage() {
                   Composite: {Math.round(results.composite_score)}% (80% screening {Math.round(results.screening_score)}% + 20% interview {Math.round(results.interview_score || results.overall_score || 0)}%)
                 </p>
               )}
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 sm:gap-6 mb-4">
+              <div className="responsive-grid-5 mb-4">
                 <ScoreIndicator score={results.technical_score} label="Technical (35%)" size="md" />
                 <ScoreIndicator score={results.problem_solving_score || results.jd_alignment_score || results.technical_score} label="Problem Solving (25%)" size="md" />
                 <ScoreIndicator score={results.communication_score} label="Communication (20%)" size="md" />

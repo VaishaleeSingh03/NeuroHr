@@ -622,10 +622,10 @@ export default function JobsPage() {
   ]);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-heading">Post Jobs</h1>
-        <p className="text-muted mt-1">
+    <div className="page-container">
+      <div className="page-header min-w-0">
+        <h1 className="page-title">Post Jobs</h1>
+        <p className="page-subtitle">
           {pipelineProcessing
             ? `Agent 1 running — ${pipelineActiveDetail || "processing pipeline"}`
             : hiringPipelineStep === 3
@@ -645,7 +645,7 @@ export default function JobsPage() {
             )}
           </h3>
           {selected && (
-            <span className="text-xs text-muted truncate max-w-[200px]">
+            <span className="text-xs text-muted truncate max-w-full sm:max-w-[200px]">
               Active: <strong className="text-heading">{selected.title}</strong>
             </span>
           )}

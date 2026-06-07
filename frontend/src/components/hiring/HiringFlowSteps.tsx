@@ -5,14 +5,14 @@ interface Props {
 
 export default function HiringFlowSteps({ steps, className = "" }: Props) {
   return (
-    <div className={`flex flex-wrap gap-2 text-xs text-body ${className}`}>
+    <div className={`grid grid-cols-1 xs:grid-cols-2 lg:flex lg:flex-wrap gap-2 text-xs text-body min-w-0 ${className}`}>
       {steps.map((step, i) => (
-        <span key={step} className="flex items-center gap-1">
-          <span className="w-5 h-5 rounded-full bg-aqua/20 text-accent flex items-center justify-center font-bold">
+        <span key={step} className="flex items-start sm:items-center gap-1.5 min-w-0">
+          <span className="w-5 h-5 shrink-0 rounded-full bg-aqua/20 text-accent flex items-center justify-center font-bold">
             {i + 1}
           </span>
-          {step}
-          {i < steps.length - 1 && <span className="text-muted">→</span>}
+          <span className="min-w-0 break-words leading-snug">{step}</span>
+          {i < steps.length - 1 && <span className="hidden lg:inline text-muted shrink-0">→</span>}
         </span>
       ))}
     </div>

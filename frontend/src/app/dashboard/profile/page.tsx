@@ -16,10 +16,10 @@ export default function ProfilePage() {
   const emp = portal?.employee as Record<string, unknown> | null;
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-3xl font-bold text-heading">My Profile</h1>
+    <div className="page-container">
+      <h1 className="page-title">My Profile</h1>
       <GlassCard>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="form-grid-2 gap-6">
           <div>
             <p className="text-sm text-muted">Name</p>
             <p className="font-semibold text-heading">{user?.name}</p>

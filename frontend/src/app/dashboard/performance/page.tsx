@@ -41,9 +41,9 @@ export default function PerformancePage() {
 
   if (user?.role === "employee" && myPerf) {
     return (
-      <div className="space-y-8">
-        <h1 className="text-3xl font-bold text-heading">My Performance</h1>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="page-container">
+        <h1 className="page-title">My Performance</h1>
+        <div className="responsive-grid-3">
           <GlassCard className="flex flex-col items-center">
             <ScoreIndicator score={Number(myPerf.aiScore) || 0} label="AI Score" size="lg" />
           </GlassCard>
@@ -63,10 +63,10 @@ export default function PerformancePage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-heading">Performance Tracking</h1>
-        <p className="text-muted mt-1">KPIs, goals, ML-powered predictions</p>
+    <div className="page-container">
+      <div className="page-header min-w-0">
+        <h1 className="page-title">Performance Tracking</h1>
+        <p className="page-subtitle">KPIs, goals, ML-powered predictions</p>
       </div>
 
       {canManage && (
@@ -75,7 +75,7 @@ export default function PerformancePage() {
             <Target className="w-5 h-5 text-aqua" /> Add Performance Review
           </h3>
           <div className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="form-grid-2 gap-3">
               <select className="input-field" value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: Number(e.target.value) })}>
                 <option value={0}>Select Employee</option>
                 {employees.map((e) => (
@@ -97,7 +97,7 @@ export default function PerformancePage() {
         </GlassCard>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="responsive-grid-3">
         {records.map((r) => (
           <GlassCard key={String(r.id)}>
             <p className="text-sm text-muted">Employee #{String(r.employeeId)} · {String(r.period)}</p>

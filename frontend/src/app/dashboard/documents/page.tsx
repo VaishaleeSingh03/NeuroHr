@@ -55,13 +55,13 @@ export default function DocumentsPage() {
   });
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-heading">Document Intelligence</h1>
-        <p className="text-muted mt-1">NLP + OCR + Computer Vision for document verification</p>
+    <div className="page-container">
+      <div className="page-header min-w-0">
+        <h1 className="page-title">Document Intelligence</h1>
+        <p className="page-subtitle">NLP + OCR + Computer Vision for document verification</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="split-layout">
         <GlassCard>
           <h3 className="font-bold text-heading mb-4">Upload Document</h3>
           <select value={docType} onChange={(e) => setDocType(e.target.value)} className="input-field mb-4">
@@ -91,7 +91,7 @@ export default function DocumentsPage() {
           </div>
         </GlassCard>
 
-        <div className="lg:col-span-2 space-y-6">
+        <div className="split-layout-main space-y-6">
           {history.length > 0 && (
             <GlassCard>
               <h3 className="font-bold text-heading mb-3">Document History</h3>
@@ -107,7 +107,7 @@ export default function DocumentsPage() {
           )}
           {result ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 xs:grid-cols-2 gap-4">
                 <GlassCard className="text-center">
                   <ScoreIndicator score={result.verification_score} label="Verification Score" size="md" />
                 </GlassCard>
@@ -120,7 +120,7 @@ export default function DocumentsPage() {
                 <h3 className="font-bold text-heading mb-4 flex items-center gap-2">
                   <Shield className="w-5 h-5 text-aqua" /> Extracted Fields
                 </h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
                   {Object.entries(result.extracted_fields).map(([key, value]) => (
                     <div key={key} className="bg-cream rounded-xl p-3">
                       <p className="text-xs text-muted capitalize">{key.replace("_", " ")}</p>

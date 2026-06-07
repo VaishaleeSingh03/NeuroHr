@@ -76,13 +76,13 @@ export default function MLTrainingPage() {
     : [];
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-heading">ML Training Pipeline</h1>
-        <p className="text-muted mt-1">Train, tune, evaluate, and deploy custom ML models</p>
+    <div className="page-container">
+      <div className="page-header min-w-0">
+        <h1 className="page-title">ML Training Pipeline</h1>
+        <p className="page-subtitle">Train, tune, evaluate, and deploy custom ML models</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="responsive-grid-2">
         <GlassCard>
           <h3 className="font-bold text-heading mb-4 flex items-center gap-2">
             <Brain className="w-5 h-5 text-aqua" /> Training Configuration
@@ -130,7 +130,7 @@ export default function MLTrainingPage() {
                 <h3 className="font-bold text-heading mb-4 flex items-center gap-2">
                   <CheckCircle className="w-5 h-5 text-green-500" /> Latest Training Results
                 </h3>
-                <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 mb-4">
                   {[
                     { label: "Accuracy", value: `${(lastResult.accuracy * 100).toFixed(1)}%` },
                     { label: "Precision", value: `${(lastResult.precision * 100).toFixed(1)}%` },

@@ -93,8 +93,8 @@ export default function ScreeningPage() {
         icon={FileText}
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <GlassCard className="lg:col-span-1">
+      <div className="split-layout">
+        <GlassCard className="split-layout-side">
           <h3 className="font-bold text-heading mb-4">Upload Resumes</h3>
           <select value={selectedJob || ""} onChange={(e) => setSelectedJob(Number(e.target.value))} className="input-field mb-2">
             <option value="">Select Job (JD)</option>
@@ -141,7 +141,7 @@ export default function ScreeningPage() {
           </div>
         </GlassCard>
 
-        <div className="lg:col-span-2 space-y-4">
+        <div className="split-layout-main space-y-4">
           {lastUpload && (
             <GlassCard hover={false} className="border border-aqua/30">
               <h4 className="font-bold text-heading mb-2 flex items-center gap-2">

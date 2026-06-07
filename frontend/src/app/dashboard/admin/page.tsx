@@ -43,13 +43,13 @@ export default function AdminPage() {
   }, {} as Record<string, number>);
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-heading">Admin Panel</h1>
-        <p className="text-muted mt-1">User management and platform administration</p>
+    <div className="page-container">
+      <div className="page-header min-w-0">
+        <h1 className="page-title">Admin Panel</h1>
+        <p className="page-subtitle">User management and platform administration</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="responsive-grid-4">
         <StatCard title="Total Users" value={users.length} icon={Users} />
         <StatCard title="Admins" value={roleCounts.management_admin || 0} icon={Shield} delay={0.1} />
         <StatCard title="Recruiters" value={roleCounts.hr_recruiter || 0} icon={Users} delay={0.2} />
@@ -58,20 +58,20 @@ export default function AdminPage() {
 
       <GlassCard>
         <h3 className="font-bold text-heading mb-4">Create User</h3>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="form-grid-2 lg:grid-cols-4">
           <input className="input-field" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <input className="input-field" placeholder="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <input className="input-field" placeholder="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           <select className="input-field" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             {ROLES.map((r) => <option key={r} value={r}>{r.replace("_", " ")}</option>)}
           </select>
-          <button onClick={createUser} className="btn-primary md:col-span-4">Create User</button>
+          <button onClick={createUser} className="btn-primary sm:col-span-2 lg:col-span-4 w-full">Create User</button>
         </div>
       </GlassCard>
 
       <GlassCard>
         <h3 className="font-bold text-heading mb-4">User Management</h3>
-        <div className="overflow-x-auto">
+        <div className="data-table-wrap">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-aqua/10">

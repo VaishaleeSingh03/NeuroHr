@@ -124,10 +124,10 @@ export default function AttendancePage() {
     ];
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-heading">Attendance &amp; Leave</h1>
-        <p className="text-muted mt-1">Check-in, leave requests, balances — payroll deducts only when leave exceeds grant</p>
+    <div className="page-container">
+      <div className="page-header min-w-0">
+        <h1 className="page-title">Attendance &amp; Leave</h1>
+        <p className="page-subtitle">Check-in, leave requests, balances — payroll deducts only when leave exceeds grant</p>
       </div>
 
       {canApprove && hrBalances.length > 0 && (
@@ -139,7 +139,7 @@ export default function AttendancePage() {
             {hrBalances.map((emp) => (
               <div key={emp.employeeId} className="p-3 rounded-xl border border-aqua/15 bg-white/50">
                 <p className="font-semibold text-heading">{emp.name} <span className="text-xs text-muted capitalize">({emp.employmentType?.replace("_", " ")})</span></p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs">
+                <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-4 gap-2 mt-2 text-xs">
                   {emp.balances && Object.entries(emp.balances).filter(([, b]) => b.granted > 0).map(([k, b]) => (
                     <div key={k} className="bg-cream/60 rounded-lg px-2 py-1">
                       <span className="text-label capitalize">{k.replace("_", " ")}</span>
@@ -156,17 +156,17 @@ export default function AttendancePage() {
         </GlassCard>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="responsive-grid-2">
         {userCanCheckIn && (
           <GlassCard>
             <h3 className="font-bold text-heading mb-4 flex items-center gap-2">
               <Clock className="w-5 h-5 text-aqua" /> Today&apos;s Attendance
             </h3>
-            <div className="flex gap-3">
-              <button onClick={checkIn} disabled={checkingIn} className="btn-primary flex-1 flex items-center justify-center gap-2">
+            <div className="flex flex-col xs:flex-row gap-3">
+              <button onClick={checkIn} disabled={checkingIn} className="btn-primary flex-1 flex items-center justify-center gap-2 w-full">
                 <LogIn className="w-4 h-4" /> {checkingIn ? "Checking in…" : "Check In"}
               </button>
-              <button onClick={checkOut} className="btn-secondary flex-1 flex items-center justify-center gap-2">
+              <button onClick={checkOut} className="btn-secondary flex-1 flex items-center justify-center gap-2 w-full">
                 <LogOut className="w-4 h-4" /> Check Out
               </button>
             </div>
@@ -195,7 +195,7 @@ export default function AttendancePage() {
         <h3 className="font-bold text-heading mb-4">
           {isHrView && !isEmployee ? "HR — All employee attendance" : "Attendance Records"}
         </h3>
-        <div className="overflow-x-auto">
+        <div className="data-table-wrap">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-muted border-b">

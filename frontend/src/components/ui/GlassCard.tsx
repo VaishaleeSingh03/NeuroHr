@@ -21,7 +21,7 @@ export default function GlassCard({ children, className, delay = 0, dark = false
       whileHover={hover ? { y: -2, transition: { duration: 0.2 } } : undefined}
       className={cn(
         dark ? "glass-card-dark" : "glass-card",
-        "p-4 sm:p-6",
+        "p-3 xs:p-4 sm:p-6 min-w-0",
         className
       )}
     >

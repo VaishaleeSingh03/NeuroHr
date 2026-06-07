@@ -252,10 +252,10 @@ export default function PayrollPage() {
   };
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-heading">Payroll System</h1>
-        <p className="text-muted mt-1">
+    <div className="page-container">
+      <div className="page-header min-w-0">
+        <h1 className="page-title">Payroll System</h1>
+        <p className="page-subtitle">
           {isEmployee
             ? "View salary breakdown, download payslips, request reimbursements"
             : "Generate payslips · Groq email to each employee · PDF attachment"}
@@ -267,7 +267,7 @@ export default function PayrollPage() {
           <h3 className="font-bold text-heading mb-4 flex items-center gap-2">
             <DollarSign className="w-5 h-5 text-aqua" /> HR — Generate Payroll
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="responsive-grid-4 gap-3">
             <select className="input-field" value={form.employee_id} onChange={(e) => setForm({ ...form, employee_id: Number(e.target.value) })}>
               <option value={0}>Select Employee</option>
               {employees.map((e) => (
@@ -295,7 +295,7 @@ export default function PayrollPage() {
               <p className="text-xs font-medium text-accent">Est. net: {fmt(preview.net_pay || 0)}</p>
             </div>
           )}
-          <div className="flex flex-wrap gap-2 mt-4">
+          <div className="btn-group-responsive mt-4">
             <button onClick={generate} disabled={generating} className="btn-primary flex items-center gap-2 text-sm">
               {generating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
               Generate &amp; email payslip
@@ -314,7 +314,7 @@ export default function PayrollPage() {
             <Receipt className="w-5 h-5 text-aqua" /> Request Reimbursement
           </h3>
           <p className="text-xs text-muted mb-3">HR receives a Groq-generated email when you submit a claim.</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="form-grid-2 gap-3">
             <select className="input-field" value={reimbForm.category} onChange={(e) => setReimbForm({ ...reimbForm, category: e.target.value })}>
               <option value="travel">Travel</option>
               <option value="meals">Meals</option>
@@ -333,7 +333,7 @@ export default function PayrollPage() {
         </GlassCard>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="responsive-grid-3">
         {payrolls.map((p) => (
           <GlassCard key={String(p.id)}>
             <div className="flex justify-between items-start mb-3">

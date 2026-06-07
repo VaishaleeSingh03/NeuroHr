@@ -49,7 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <NotificationProvider>
-    <div className="flex min-h-screen relative">
+    <div className="flex min-h-screen min-h-[100dvh] relative overflow-x-hidden w-full">
       <div className="hidden lg:block shrink-0">
         <Sidebar />
       </div>
@@ -100,8 +100,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <NotificationBell variant="light" />
         </div>
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-auto">
-          <div key={pathname}>
+        <main className="flex-1 p-3 xs:p-4 sm:p-6 lg:p-8 overflow-x-hidden overflow-y-auto min-w-0 w-full">
+          <div key={pathname} className="min-w-0 w-full max-w-full">
             {children}
           </div>
         </main>

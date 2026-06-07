@@ -97,8 +97,18 @@ export default function LoginPage() {
         <div className="absolute bottom-0 right-0 w-64 xl:w-96 h-64 xl:h-96 bg-aqua/10 rounded-full blur-3xl" />
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
-        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md">
+      <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-8 min-w-0">
+        <div className="lg:hidden w-full max-w-md mb-6">
+          <div className="grid grid-cols-2 gap-2">
+            {features.map((item) => (
+              <div key={item.label} className="flex items-center gap-2 bg-white/60 rounded-xl p-3 text-xs font-medium text-heading border border-aqua/10">
+                <item.icon className="w-4 h-4 text-accent shrink-0" />
+                <span className="min-w-0 truncate">{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md min-w-0">
           <div className="glass-card p-6 sm:p-8">
             <div className="lg:hidden flex items-center gap-2 mb-6">
               <div className="w-10 h-10 bg-aqua rounded-xl flex items-center justify-center">

@@ -76,13 +76,13 @@ export default function ChatPage() {
   if (!user) return null;
 
   return (
-    <div className="space-y-6 h-[calc(100vh-8rem)] flex flex-col">
-      <div>
-        <h1 className="text-3xl font-bold text-heading">{chatConfig.title}</h1>
-        <p className="text-muted mt-1">{chatConfig.subtitle}</p>
+    <div className="page-container chat-shell">
+      <div className="shrink-0 min-w-0">
+        <h1 className="page-title">{chatConfig.title}</h1>
+        <p className="page-subtitle">{chatConfig.subtitle}</p>
       </div>
 
-      <GlassCard className="flex-1 flex flex-col overflow-hidden">
+      <GlassCard className="flex-1 flex flex-col overflow-hidden min-h-0 min-w-0">
         <div className="flex-1 overflow-y-auto space-y-4 p-2">
           {messages.map((msg, i) => (
             <motion.div
@@ -95,7 +95,7 @@ export default function ChatPage() {
                 ${msg.role === "assistant" ? "bg-aqua text-inverse" : "bg-teal-dark text-inverse"}`}>
                 {msg.role === "assistant" ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
               </div>
-              <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm
+              <div className={`chat-bubble rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm
                 ${msg.role === "assistant"
                   ? "bg-cream text-heading border border-aqua/10"
                   : "bg-aqua text-inverse"}`}>
@@ -137,8 +137,8 @@ export default function ChatPage() {
               </button>
             ))}
           </div>
-          <div className="flex gap-2 items-end">
-            <div className="flex-1">
+          <div className="flex flex-col xs:flex-row gap-2 items-stretch xs:items-end min-w-0">
+            <div className="flex-1 min-w-0">
               <RichTextEditor
                 value={inputHtml}
                 onChange={setInputHtml}
@@ -147,7 +147,7 @@ export default function ChatPage() {
                 disabled={loading}
               />
             </div>
-            <button onClick={() => send()} disabled={loading} className="btn-primary px-4 h-[42px]">
+            <button onClick={() => send()} disabled={loading} className="btn-primary px-4 h-[42px] w-full xs:w-auto shrink-0">
               <Send className="w-4 h-4" />
             </button>
           </div>

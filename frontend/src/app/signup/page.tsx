@@ -53,8 +53,8 @@ export default function SignupPage() {
   const selectedRole = ROLE_OPTIONS.find((r) => r.value === role);
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 sm:p-8 bg-gradient-main">
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center p-4 sm:p-8 bg-gradient-main overflow-x-hidden">
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md sm:max-w-lg min-w-0">
         <div className="glass-card p-6 sm:p-8">
           <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-aqua rounded-xl flex items-center justify-center">

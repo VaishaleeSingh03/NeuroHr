@@ -236,7 +236,7 @@ export default function JobOpeningsPage() {
         <div id="progress" className="scroll-mt-24 mb-6">
         <GlassCard hover={false}>
           <h3 className="font-bold text-heading mb-3">My Applications</h3>
-          <div className="overflow-x-auto">
+          <div className="data-table-wrap">
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-label border-b border-aqua/15">
@@ -302,8 +302,8 @@ export default function JobOpeningsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
-        <div id="browse-jobs" className="lg:col-span-1 scroll-mt-24">
+      <div className="split-layout gap-4 sm:gap-6">
+        <div id="browse-jobs" className="split-layout-side scroll-mt-24">
         <GlassCard hover={false}>
           <h3 className="font-bold text-heading mb-4">Open Positions ({jobs.length})</h3>
           <div className="space-y-2 max-h-[70vh] overflow-y-auto">
@@ -326,7 +326,7 @@ export default function JobOpeningsPage() {
         </GlassCard>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="split-layout-main">
           {selected ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <GlassCard hover={false}>

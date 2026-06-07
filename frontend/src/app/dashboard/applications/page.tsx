@@ -456,8 +456,8 @@ export default function ApplicationsPage() {
         )}
       </GlassCard>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <GlassCard className="lg:col-span-1" hover={false}>
+      <div className="split-layout">
+        <GlassCard className="split-layout-side" hover={false}>
           <h3 className="font-bold text-heading mb-3">Applications ({apps.length})</h3>
           <div className="space-y-2 max-h-[70vh] overflow-y-auto">
             {apps.map((a) => (
@@ -490,7 +490,7 @@ export default function ApplicationsPage() {
           </div>
         </GlassCard>
 
-        <div className="lg:col-span-2">
+        <div className="split-layout-main">
           {selected ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               <GlassCard hover={false}>
@@ -948,11 +948,11 @@ export default function ApplicationsPage() {
                       <div className="space-y-2">
                         <p className="text-xs font-semibold text-label">Interviewers — enter Gmail(s) to receive briefing email</p>
                         {panelInterviewers.map((row, index) => (
-                          <div key={`row-${index}`} className="grid grid-cols-[1fr_1.2fr_1fr_auto] gap-2 items-center">
-                            <input value={row.name} onChange={(e) => updatePanelInterviewer(index, "name", e.target.value)} placeholder="Name (optional)" className="input-field text-sm" />
-                            <input value={row.email} onChange={(e) => updatePanelInterviewer(index, "email", e.target.value)} placeholder="interviewer@gmail.com" type="email" className="input-field text-sm" required />
-                            <input value={row.role} onChange={(e) => updatePanelInterviewer(index, "role", e.target.value)} placeholder="Role (optional)" className="input-field text-sm" />
-                            <button type="button" onClick={() => removePanelInterviewer(index)} disabled={panelInterviewers.length <= 1} className="p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-30" aria-label="Remove"><Trash2 className="w-4 h-4" /></button>
+                          <div key={`row-${index}`} className="panel-interviewer-row">
+                            <input value={row.name} onChange={(e) => updatePanelInterviewer(index, "name", e.target.value)} placeholder="Name (optional)" className="input-field text-sm panel-field-name" />
+                            <input value={row.email} onChange={(e) => updatePanelInterviewer(index, "email", e.target.value)} placeholder="interviewer@gmail.com" type="email" className="input-field text-sm panel-field-email" required />
+                            <input value={row.role} onChange={(e) => updatePanelInterviewer(index, "role", e.target.value)} placeholder="Role (optional)" className="input-field text-sm panel-field-role" />
+                            <button type="button" onClick={() => removePanelInterviewer(index)} disabled={panelInterviewers.length <= 1} className="panel-field-action p-2 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-30 w-full sm:w-auto" aria-label="Remove"><Trash2 className="w-4 h-4 mx-auto sm:mx-0" /></button>
                           </div>
                         ))}
                         <button type="button" onClick={addInterviewerRow} className="btn-secondary text-xs flex items-center gap-1">
