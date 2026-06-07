@@ -66,16 +66,23 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text or "") // 4)
 
 
-def _cap_max_tokens(system: str, user: str, max_tokens: int) -> int:
-    """Keep input + max_tokens under Groq on-demand TPM/request limits (~6000)."""
-    budget = getattr(settings, "groq_request_token_budget", None) or 5500
+def _cap_max_tokens(
+    system: str,
+    user: str,
+    max_tokens: int,
+    *,
+    min_output: int = 256,
+    budget: int | None = None,
+) -> int:
+    """Keep input + max_tokens under Groq on-demand limits; allow higher floor for large JSON tasks."""
+    cap_budget = budget or getattr(settings, "groq_request_token_budget", None) or 5500
     input_est = _estimate_tokens(system) + _estimate_tokens(user) + 80
-    available = budget - input_est
-    capped = min(max_tokens, max(256, available))
+    available = cap_budget - input_est
+    capped = min(max_tokens, max(min_output, available))
     if capped < max_tokens:
         logger.info(
             "Capped Groq max_tokens %s -> %s (est. input %s, budget %s)",
-            max_tokens, capped, input_est, budget,
+            max_tokens, capped, input_est, cap_budget,
         )
     return capped
 
@@ -114,11 +121,17 @@ def groq_chat(
     *,
     strict: bool = False,
     json_mode: bool = False,
+    min_output_tokens: int = 256,
+    token_budget: int | None = None,
 ) -> str | None:
     global _last_groq_error
     client = _get_client()
     if client:
-        safe_max = _cap_max_tokens(system, user, max_tokens)
+        safe_max = _cap_max_tokens(
+            system, user, max_tokens,
+            min_output=min_output_tokens,
+            budget=token_budget,
+        )
         kwargs = {
             "model": model or settings.groq_model,
             "messages": [
@@ -179,6 +192,8 @@ def groq_json(
     model: str | None = None,
     strict: bool = False,
     max_tokens: int = 1536,
+    min_output_tokens: int = 256,
+    token_budget: int | None = None,
 ) -> dict | list | None:
     """
     Groq-only JSON helper with retries.
@@ -219,6 +234,8 @@ def groq_json(
             max_tokens=max_tokens,
             strict=False,
             json_mode=use_json_mode,
+            min_output_tokens=min_output_tokens,
+            token_budget=token_budget,
         )
         if not text or not str(text).strip():
             errors.append(f"{attempt_model}(json={use_json_mode}):empty")
