@@ -104,7 +104,7 @@ Return JSON with key "questions" — array of objects: id (number), question (st
 
 def analyze_answer(question: str, answer: str, job_context: str) -> dict:
     """Per-answer scoring — Groq only, JD-aligned. No heuristic fallback."""
-    from pipelines.groq_service import GroqApiError, groq_json, require_groq
+    from pipelines.groq_service import GroqApiError, groq_interview_json, require_groq
 
     if not answer or len(answer.strip()) < 5:
         return {
@@ -119,10 +119,10 @@ def analyze_answer(question: str, answer: str, job_context: str) -> dict:
         }
 
     require_groq()
-    result = groq_json(
+    result = groq_interview_json(
         "You score interview answers 0-100 strictly against the job description and question. Be honest; weak answers score low.",
         f"""JOB DESCRIPTION / CONTEXT:
-{job_context[:2000]}
+{job_context[:1500]}
 
 QUESTION: {question}
 
@@ -130,6 +130,7 @@ CANDIDATE ANSWER: {answer}
 
 Score based on JD relevance, technical depth demonstrated in the answer, and communication.
 Return JSON only with: technical_score, communication_score, confidence_score, jd_alignment_score, sentiment_score, fluency_score, feedback (2-3 sentences referencing JD fit)""",
+        max_tokens=768,
     )
     if not isinstance(result, dict):
         raise GroqApiError("Groq per-answer interview evaluation returned invalid JSON")

@@ -40,5 +40,5 @@ module.exports = {
   geminiModel: process.env.GEMINI_MODEL || 'gemini-2.0-flash',
   /** groq = direct Groq API (fast); template = instant branded templates */
   hrEmailMode: (process.env.HR_EMAIL_MODE || 'groq').toLowerCase(),
-  hrEmailGroqTimeoutMs: parseInt(process.env.HR_EMAIL_GROQ_TIMEOUT_MS || '12000', 10),
+  hrEmailGroqTimeoutMs: parseInt(process.env.HR_EMAIL_GROQ_TIMEOUT_MS || '25000', 10),
 };

@@ -8,7 +8,8 @@ const { dedupeInterviewsByRole, summarizeInterviewForClient } = require('../lib/
 const ml = require('../services/mlClient');
 const config = require('../config');
 const {
-  processCandidateApplication, createJobApplicationRecord, finalizeApplicationAfterScreening,
+  stageApplicationForScreening,
+  runApplicationScreeningInBackground,
 } = require('../lib/applicationService');
 const { runEmailInBackground } = require('../lib/emailAsync');
 const {
@@ -834,84 +835,40 @@ router.post('/:id/apply', auth(['candidate']), upload.single('resume'), async (r
   const existing = await JobApplication.findOne({ jobId, candidateId: candidate.id });
   if (existing) {
     if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+    if (existing.status === 'screening') {
+      return res.status(409).json({
+        error: 'Your application is already being screened. Check Job Openings in a minute.',
+        screening_in_progress: true,
+        applicationId: existing.id,
+      });
+    }
     return res.status(400).json({ error: 'You have already applied to this job' });
   }
 
   try {
-    const processed = await processCandidateApplication({
+    ml.wakeHealth().catch(() => {});
+    const staged = await stageApplicationForScreening({
       file: req.file,
       job,
       user: req.user,
       body: req.body,
     });
 
-    const application = await createJobApplicationRecord({
+    const io = req.app.get('io');
+    runApplicationScreeningInBackground({
+      applicationId: staged.application.id,
       job,
       user: req.user,
-      candidate: processed.candidate,
-      parsed: processed.parsed,
-      screening: processed.screening,
-      resumePath: processed.resumePath,
-      resumeData: processed.resumeData,
-      resumeFileName: processed.resumeFileName,
-      resumeMimeType: processed.resumeMimeType,
-      skills: processed.skills,
-      coverNote: req.body.cover_note,
-      highlightedSkills: processed.highlightedSkills,
+      staged,
+      io,
     });
 
-    const io = req.app.get('io');
-    const shortlistResult = await finalizeApplicationAfterScreening(application, { io });
-
-    const recruiters = await User.find({
-      role: { $in: ['hr_recruiter', 'management_admin'] },
-      isActive: { $ne: false },
-    }).lean();
-    const recruiterIds = [...new Set([
-      ...recruiters.map((u) => u.id),
-      job.createdBy,
-    ].filter(Boolean))];
-
-    const scoreLabel = Math.round(application.jdScore || 0);
-    if (recruiterIds.length) await notifyUsers(recruiterIds, {
-      type: shortlistResult.autoShortlisted ? 'auto_shortlisted' : 'new_application',
-      title: shortlistResult.autoShortlisted
-        ? `Auto-shortlisted — ${application.candidateName}`
-        : 'New job application — review required',
-      message: shortlistResult.autoShortlisted
-        ? `${application.candidateName} scored ${scoreLabel}/100 on ${job.title} — auto-shortlisted. Schedule AI interview in Applications.`
-        : `${application.candidateName} applied for ${job.title} — ${application.recommendation || 'Screened'} (${scoreLabel}/100). Review and shortlist in Applications.`,
-      link: '/dashboard/applications',
-      meta: {
-        applicationId: application.id,
-        jobId: job.id,
-        candidateId: application.candidateId,
-        jdScore: application.jdScore,
-        autoShortlisted: shortlistResult.autoShortlisted,
-      },
-    }, io);
-
-    if (!shortlistResult.autoShortlisted) {
-      await notifyUsers([req.user.id], {
-        type: 'application_submitted',
-        title: 'Application submitted',
-        message: `Your application for ${job.title} was received (${application.recommendation || 'screened'} — ${scoreLabel}/100). A recruiter will review your resume.`,
-        link: '/dashboard/job-openings',
-        meta: { applicationId: application.id, jobId: job.id, jdScore: application.jdScore },
-      }, io);
-    }
-
-    const appObj = application.toObject();
+    const appObj = staged.application.toObject();
     delete appObj.resumeData;
-    res.status(201).json({
-      message: shortlistResult.autoShortlisted
-        ? `Application submitted — strong match ${scoreLabel}/100. Auto-shortlisted; HR will schedule your AI interview.`
-        : `Application submitted — ${application.recommendation || 'Screened'} (${scoreLabel}/100). Awaiting HR shortlist.`,
+    return res.status(202).json({
+      screening_in_progress: true,
+      message: 'Application received — AI is screening your resume against the job description. You will be notified shortly.',
       application: { ...appObj, hasResume: true },
-      jd_score: application.jdScore,
-      auto_shortlisted: shortlistResult.autoShortlisted,
-      screening_rejected: false,
-      screening: processed.screening,
       job: normalizeJob(job),
     });
   } catch (err) {
@@ -926,9 +883,9 @@ router.post('/:id/apply', auth(['candidate']), upload.single('resume'), async (r
     const isTimeout = err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT';
     return res.status(status).json({
       error: isTimeout
-        ? 'Resume analysis is taking longer than usual. Please wait a moment and try again.'
+        ? 'Resume upload succeeded but AI screening timed out. Please retry in a moment.'
         : detail,
-        hint: isTimeout
+      hint: isTimeout
         ? 'If this keeps happening, wake the ML service at /health and retry.'
         : detail.includes('ML') || detail.includes('Groq') || detail.includes('Gemini')
           ? 'Set GROQ_API_KEY and/or GEMINI_API_KEY on the ML service, wake ML at /health, then retry'

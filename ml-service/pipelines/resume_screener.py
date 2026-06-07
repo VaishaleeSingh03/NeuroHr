@@ -3,7 +3,7 @@
 from pipelines.harness_profile import normalize_to_harness_profile, candidate_type
 from pipelines.fresher_screener import screen_fresher
 from pipelines.experienced_screener import screen_experienced
-from pipelines.llm_provider import require_llm
+from pipelines.groq_service import require_groq
 from pipelines.preprocessing import extract_skills_from_text
 
 
@@ -149,7 +149,7 @@ def screen_resume_against_jd(
     job_experience_level: str = "2 years",
     job_nice_to_have: list | None = None,
 ) -> dict:
-    require_llm()
+    require_groq()
     profile = normalize_to_harness_profile(parsed_resume)
     jd_req = _build_jd_requirements(
         job_title, job_description, job_skills, job_experience_level, job_nice_to_have,

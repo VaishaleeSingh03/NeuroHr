@@ -3,7 +3,7 @@
 import json
 import logging
 
-from pipelines.groq_service import GroqApiError, groq_json, require_groq
+from pipelines.groq_service import GroqApiError, groq_interview_json, require_groq
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +93,10 @@ def evaluate_interview_transcript(
 Resume screening score (context only, do NOT copy as interview score): {screening_score}/100
 
 === JOB DESCRIPTION / REQUIREMENTS (primary scoring reference) ===
-{(job_context or "No JD provided — score strictly on demonstrated performance in transcript.")[:3000]}
+{(job_context or "No JD provided — score strictly on demonstrated performance in transcript.")[:2000]}
 
 === INTERVIEW TRANSCRIPT (candidate performance) ===
-{transcript_text}
+{transcript_text[:5000]}
 
 === EVALUATION ===
 Score ONLY from what the candidate actually said in the transcript, measured against the job description above.
@@ -129,9 +129,10 @@ Score honestly. total_score above 70 = Hire, 55-70 = Lean Hire, below 55 = No Hi
 Short or empty answers should score low."""
 
     require_groq()
-    evaluation = groq_json(
+    evaluation = groq_interview_json(
         "You evaluate technical interviews with rigorous, fair scoring.",
         prompt,
+        max_tokens=2048,
     )
 
     if not isinstance(evaluation, dict):

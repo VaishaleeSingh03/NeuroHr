@@ -2,7 +2,7 @@
 
 import logging
 
-from pipelines.llm_json_util import call_llm_json
+from pipelines.groq_service import groq_screening_json
 from pipelines.screening_utils import (
     candidate_json,
     compact_jd_payload,
@@ -37,11 +37,9 @@ def screen_experienced(candidate: dict, jd_requirements: dict) -> dict:
         '"dimension_scores":{},"escalate_to_human":false}'
     )
 
-    result = call_llm_json(
+    result = groq_screening_json(
         "Expert HR experienced technical screener. Output one JSON object only.",
         prompt,
-        prefer_fast=True,
-        max_tokens=2048,
     )
 
     parsed = normalize_screening_result(result, "experienced_8step", name)

@@ -1,6 +1,6 @@
 """Interviewer briefing — great-harness-agent offers.py Sub-Agent 2 style."""
 
-from pipelines.groq_service import GroqApiError, groq_strong, require_groq
+from pipelines.groq_service import GroqApiError, groq_interview_text, require_groq
 
 
 def _answers_from_transcript(transcript: list) -> str:
@@ -122,7 +122,7 @@ Write an HTML-friendly briefing (use <p>, <ul>, <ol>, <strong> — no outer <htm
 Keep it concise, actionable, and specific to this candidate."""
 
     require_groq()
-    text = groq_strong(
+    text = groq_interview_text(
         "You are an expert technical hiring manager preparing interview briefings. "
         "Use ONLY the candidate data provided — no generic filler.",
         prompt,

@@ -55,6 +55,14 @@ class ScreenRequest(BaseModel):
     job_experience_level: str = "2 years"
 
 
+class ApplyProcessRequest(BaseModel):
+    job_title: str = ""
+    job_description: str = ""
+    job_skills: list[str] = []
+    job_nice_to_have: list[str] = []
+    job_experience_level: str = "2 years"
+
+
 class JDRequest(BaseModel):
     description: str
     company: str = ""
@@ -214,6 +222,45 @@ async def api_screen_resume(data: ScreenRequest):
         )
     except (GroqNotConfiguredError, GroqApiError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.post("/api/resume/apply-process")
+async def api_apply_process(
+    file: UploadFile = File(...),
+    job_context: str = Form("{}"),
+):
+    """Parse resume + screen against JD in one call (single cold start on Render)."""
+    import json
+    from fastapi import HTTPException
+    from pipelines.resume_parser import ResumeParseError, parse_resume
+    from pipelines.groq_service import GroqApiError, GroqNotConfiguredError
+    from pipelines.resume_screener import screen_resume_against_jd
+
+    try:
+        ctx = json.loads(job_context or "{}")
+    except json.JSONDecodeError:
+        ctx = {}
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename or ".pdf")[1]) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
+    try:
+        parsed = parse_resume(tmp_path)
+        screening = screen_resume_against_jd(
+            parsed,
+            ctx.get("job_description") or ctx.get("description") or "",
+            ctx.get("job_title") or ctx.get("title") or "",
+            ctx.get("job_skills") or ctx.get("skills") or [],
+            ctx.get("job_experience_level") or ctx.get("experience_level") or "2 years",
+            ctx.get("job_nice_to_have") or ctx.get("nice_to_have_skills") or [],
+        )
+        return {"parsed": parsed, "screening": screening}
+    except ResumeParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except (GroqNotConfiguredError, GroqApiError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    finally:
+        os.unlink(tmp_path)
 
 
 @app.post("/api/jd/analyze")

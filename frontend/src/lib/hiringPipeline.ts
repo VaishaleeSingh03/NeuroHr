@@ -317,6 +317,8 @@ export function pipelineStatusLabel(app: PipelineApplication | null | undefined)
 
   }
 
+  if (app.status === "screening") return "AI screening your resume…";
+
   if (app.status === "shortlisted") {
 
     return app.autoShortlisted

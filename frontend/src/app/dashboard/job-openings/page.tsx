@@ -146,6 +146,21 @@ export default function JobOpeningsPage() {
       form.append("highlighted_skills", JSON.stringify(highlightedSkills));
 
       const { data } = await jobsAPI.apply(selected.id, form);
+
+      if (data.screening_in_progress) {
+        toast.success(
+          data.message || "Application received! AI is screening your resume — you'll be notified shortly.",
+          { duration: 6000 },
+        );
+        dispatchNotificationsRefresh();
+        setResumeFile(null);
+        setCoverNote("");
+        setApplyStep(0);
+        load();
+        setSelected((prev) => (prev ? { ...prev, applied: true } : null));
+        return;
+      }
+
       const jdScore = data.jd_score || 0;
       const autoShortlisted = Boolean(data.auto_shortlisted);
       setLastResult({ jd_score: jdScore, jobTitle: selected.title, rejected: false });

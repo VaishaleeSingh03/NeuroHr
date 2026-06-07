@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const { Candidate, JobApplication, getNextSeq } = require('../models');
+const { Candidate, JobApplication, User, getNextSeq } = require('../models');
 const ml = require('../services/mlClient');
 const config = require('../config');
 const { normalizeEmail } = require('./emailUtils');
@@ -8,9 +8,8 @@ const { stripHtml } = require('./emailContext');
 const { SCREENING_PASS_THRESHOLD } = require('./interviewOutcome');
 const { notifyUsers } = require('./notify');
 
-/** Groq resume parse + JD screening can take 30–90s on cold ML / large PDFs. */
-const APPLY_PARSE_TIMEOUT_MS = 120000;
-const APPLY_SCREEN_TIMEOUT_MS = 120000;
+/** Single combined ML call — parse + screen in one round trip (Render cold start). */
+const APPLY_COMBINED_TIMEOUT_MS = 240000;
 const MAX_RESUME_DB_BYTES = 3 * 1024 * 1024;
 
 function buildJobContext(job) {
@@ -47,6 +46,16 @@ function guessResumeMimeType(originalName, mimetype) {
     return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   }
   return 'application/octet-stream';
+}
+
+function parseHighlightedSkills(body) {
+  try {
+    if (Array.isArray(body.highlighted_skills)) return body.highlighted_skills;
+    if (body.highlighted_skills) return JSON.parse(body.highlighted_skills);
+  } catch {
+    // ignore
+  }
+  return [];
 }
 
 async function getOrCreateCandidate(user, parsed, manual = {}) {
@@ -91,10 +100,102 @@ function trimScreeningForStorage(screening) {
   return copy;
 }
 
+function readResumeArtifacts(dest, originalName, mimetype) {
+  const resumeBuffer = fs.readFileSync(dest);
+  const resumeData = resumeBuffer.length <= MAX_RESUME_DB_BYTES ? resumeBuffer : undefined;
+  if (!resumeData) {
+    console.warn(`[apply] Resume ${resumeBuffer.length} bytes — stored on disk only (Mongo cap ${MAX_RESUME_DB_BYTES})`);
+  }
+  const ext = path.extname(originalName || '') || '.pdf';
+  return {
+    resumeData,
+    resumeFileName: originalName || `resume${ext}`,
+    resumeMimeType: guessResumeMimeType(originalName, mimetype),
+  };
+}
+
+async function runMlParseAndScreen(resumePath, resumeFileName, job) {
+  ml.wakeHealth().catch(() => {});
+  const jobContext = buildJobContext(job);
+  try {
+    const { parsed, screening: rawScreening } = await ml.parseAndScreenResume(
+      resumePath,
+      resumeFileName,
+      jobContext,
+      { timeout: APPLY_COMBINED_TIMEOUT_MS },
+    );
+    return {
+      parsed,
+      screening: trimScreeningForStorage(rawScreening),
+    };
+  } catch (err) {
+    const status = err.response?.status;
+    const missingCombined = status === 404 || status === 405
+      || String(err.message || '').includes('apply-process');
+    if (!missingCombined) throw err;
+    console.warn('[apply] /apply-process unavailable — falling back to parse + screen');
+    const parsed = await ml.parseResume(resumePath, resumeFileName, {
+      timeout: APPLY_COMBINED_TIMEOUT_MS,
+    });
+    const rawScreening = await ml.screenResume(parsed, jobContext, {
+      timeout: APPLY_COMBINED_TIMEOUT_MS,
+    });
+    return {
+      parsed,
+      screening: trimScreeningForStorage(rawScreening),
+    };
+  }
+}
+
+/** Save resume + create pending application; respond to client before ML runs. */
+async function stageApplicationForScreening({ file, job, user, body }) {
+  const manualEmail = normalizeEmail(body.contact_email) || normalizeEmail(user.email);
+  const candidate = await getOrCreateCandidate(user, {}, {
+    name: body.name,
+    phone: body.phone,
+    email: manualEmail,
+  });
+
+  const ext = path.extname(file.originalname) || '.pdf';
+  const dest = path.join(config.uploadDir, `apply_${candidate.id}_${job.id}${ext}`);
+  fs.renameSync(file.path, dest);
+  const { resumeData, resumeFileName, resumeMimeType } = readResumeArtifacts(
+    dest,
+    file.originalname,
+    file.mimetype,
+  );
+  const highlightedSkills = parseHighlightedSkills(body);
+
+  const application = await createPendingJobApplicationRecord({
+    job,
+    user,
+    candidate,
+    resumePath: dest,
+    resumeData,
+    resumeFileName,
+    resumeMimeType,
+    coverNote: body.cover_note,
+    highlightedSkills,
+    phone: body.phone,
+  });
+
+  return {
+    application,
+    candidate,
+    resumePath: dest,
+    resumeFileName,
+    resumeMimeType,
+    highlightedSkills,
+    manualEmail,
+  };
+}
+
 async function processCandidateApplication({ file, job, user, body }) {
-  const parsed = await ml.parseResume(file.path, file.originalname, { timeout: APPLY_PARSE_TIMEOUT_MS });
-  let screening = await ml.screenResume(parsed, buildJobContext(job), { timeout: APPLY_SCREEN_TIMEOUT_MS });
-  screening = trimScreeningForStorage(screening);
+  const { parsed, screening } = await runMlParseAndScreen(
+    file.path,
+    file.originalname || 'resume.pdf',
+    job,
+  );
 
   const manualEmail = normalizeEmail(body.contact_email) || normalizeEmail(user.email);
   if (!parsed.email && manualEmail) {
@@ -111,23 +212,13 @@ async function processCandidateApplication({ file, job, user, body }) {
   const ext = path.extname(file.originalname) || '.pdf';
   const dest = path.join(config.uploadDir, `apply_${candidate.id}_${job.id}${ext}`);
   fs.renameSync(file.path, dest);
-  const resumeBuffer = fs.readFileSync(dest);
-  const resumeData = resumeBuffer.length <= MAX_RESUME_DB_BYTES ? resumeBuffer : undefined;
-  if (!resumeData) {
-    console.warn(`[apply] Resume ${resumeBuffer.length} bytes — stored on disk only (Mongo cap ${MAX_RESUME_DB_BYTES})`);
-  }
-  const resumeFileName = file.originalname || `resume${ext}`;
-  const resumeMimeType = guessResumeMimeType(resumeFileName, file.mimetype);
-
-  let highlighted = [];
-  try {
-    if (Array.isArray(body.highlighted_skills)) highlighted = body.highlighted_skills;
-    else if (body.highlighted_skills) highlighted = JSON.parse(body.highlighted_skills);
-  } catch {
-    highlighted = [];
-  }
-
-  const mergedSkills = [...new Set([...(parsed.skills || []), ...highlighted])];
+  const { resumeData, resumeFileName, resumeMimeType } = readResumeArtifacts(
+    dest,
+    file.originalname,
+    file.mimetype,
+  );
+  const highlightedSkills = parseHighlightedSkills(body);
+  const mergedSkills = [...new Set([...(parsed.skills || []), ...highlightedSkills])];
 
   await Candidate.updateOne(
     { id: candidate.id },
@@ -149,7 +240,7 @@ async function processCandidateApplication({ file, job, user, body }) {
         status: 'applied',
         source: 'job_apply',
       },
-    }
+    },
   );
 
   return {
@@ -161,8 +252,34 @@ async function processCandidateApplication({ file, job, user, body }) {
     resumeFileName,
     resumeMimeType,
     skills: mergedSkills,
-    highlightedSkills: highlighted,
+    highlightedSkills,
   };
+}
+
+async function createPendingJobApplicationRecord({
+  job, user, candidate, resumePath, resumeData, resumeFileName, resumeMimeType,
+  coverNote, highlightedSkills, phone,
+}) {
+  const appId = await getNextSeq('jobapplications');
+  return JobApplication.create({
+    id: appId,
+    jobId: job.id,
+    candidateId: candidate.id,
+    userId: user.id,
+    candidateName: candidate.name,
+    candidateEmail: candidate.email,
+    jobTitle: job.title,
+    coverNote: coverNote || '',
+    phone: phone || candidate.phone || '',
+    resumePath,
+    resumeData,
+    resumeFileName,
+    resumeMimeType,
+    skills: highlightedSkills || [],
+    highlightedSkills: highlightedSkills || [],
+    status: 'screening',
+    appliedAt: new Date(),
+  });
 }
 
 async function createJobApplicationRecord({
@@ -199,6 +316,51 @@ async function createJobApplicationRecord({
   });
 }
 
+async function applyScreeningToApplication(application, {
+  parsed, screening, candidate, highlightedSkills, job,
+}) {
+  const mergedSkills = [...new Set([...(parsed.skills || []), ...(highlightedSkills || [])])];
+
+  application.status = 'applied';
+  application.skills = mergedSkills;
+  application.jdScore = screening.total_score ?? screening.ai_score;
+  application.matchScore = screening.total_score ?? screening.ai_score;
+  application.screening = screening;
+  application.parsedData = parsed;
+  application.jdFitSummary = screening.decision_note || screening.jd_fit_summary || '';
+  application.recommendation = screening.verdict || screening.recommendation || '';
+  application.missingSkills = screening.key_gaps || screening.missing_skills || [];
+  application.matchedSkills = screening.skill_match?.matched || screening.top_strengths || [];
+  application.phone = candidate.phone || parsed.phone || application.phone;
+  application.candidateName = candidate.name || application.candidateName;
+  await application.save();
+
+  await Candidate.updateOne(
+    { id: candidate.id },
+    {
+      $set: {
+        jobId: job.id,
+        name: candidate.name,
+        phone: candidate.phone,
+        resumePath: application.resumePath,
+        skills: mergedSkills,
+        experience: parsed.experience || [],
+        education: parsed.education || [],
+        matchScore: screening.ai_score,
+        rankingScore: screening.ai_score,
+        featureScores: screening.feature_scores,
+        skillMatch: screening.skill_match,
+        missingSkills: screening.missing_skills || [],
+        extractedData: { ...parsed, screening, job_title: job.title },
+        status: 'applied',
+        source: 'job_apply',
+      },
+    },
+  );
+
+  return application;
+}
+
 /** Auto-shortlist when Groq screening score meets threshold (≥80%). */
 async function finalizeApplicationAfterScreening(application, { io } = {}) {
   const score = Number(application.jdScore ?? application.matchScore ?? 0);
@@ -224,10 +386,156 @@ async function finalizeApplicationAfterScreening(application, { io } = {}) {
   return { autoShortlisted: true, score };
 }
 
+async function notifyApplicationOutcome({
+  application, job, user, shortlistResult, io,
+}) {
+  const recruiters = await User.find({
+    role: { $in: ['hr_recruiter', 'management_admin'] },
+    isActive: { $ne: false },
+  }).lean();
+  const recruiterIds = [...new Set([
+    ...recruiters.map((u) => u.id),
+    job.createdBy,
+  ].filter(Boolean))];
+
+  const scoreLabel = Math.round(application.jdScore || 0);
+  if (recruiterIds.length) {
+    await notifyUsers(recruiterIds, {
+      type: shortlistResult.autoShortlisted ? 'auto_shortlisted' : 'new_application',
+      title: shortlistResult.autoShortlisted
+        ? `Auto-shortlisted — ${application.candidateName}`
+        : 'New job application — review required',
+      message: shortlistResult.autoShortlisted
+        ? `${application.candidateName} scored ${scoreLabel}/100 on ${job.title} — auto-shortlisted. Schedule AI interview in Applications.`
+        : `${application.candidateName} applied for ${job.title} — ${application.recommendation || 'Screened'} (${scoreLabel}/100). Review and shortlist in Applications.`,
+      link: '/dashboard/applications',
+      meta: {
+        applicationId: application.id,
+        jobId: job.id,
+        candidateId: application.candidateId,
+        jdScore: application.jdScore,
+        autoShortlisted: shortlistResult.autoShortlisted,
+      },
+    }, io);
+  }
+
+  if (!shortlistResult.autoShortlisted) {
+    await notifyUsers([user.id], {
+      type: 'application_submitted',
+      title: 'Application submitted',
+      message: `Your application for ${job.title} was received (${application.recommendation || 'screened'} — ${scoreLabel}/100). A recruiter will review your resume.`,
+      link: '/dashboard/job-openings',
+      meta: { applicationId: application.id, jobId: job.id, jdScore: application.jdScore },
+    }, io);
+  }
+}
+
+async function completeApplicationScreening({
+  applicationId, job, user, staged, io,
+}) {
+  const application = await JobApplication.findOne({ id: applicationId });
+  if (!application || application.status !== 'screening') return null;
+
+  const { parsed, screening } = await runMlParseAndScreen(
+    staged.resumePath,
+    staged.resumeFileName,
+    job,
+  );
+
+  if (!parsed.email && staged.manualEmail) {
+    parsed.email = staged.manualEmail;
+    parsed.email_source = 'profile';
+  }
+
+  const candidate = await getOrCreateCandidate(user, parsed, {
+    name: staged.application.candidateName || user.name,
+    phone: staged.application.phone,
+    email: staged.manualEmail,
+  });
+
+  await applyScreeningToApplication(application, {
+    parsed,
+    screening,
+    candidate,
+    highlightedSkills: staged.highlightedSkills,
+    job,
+  });
+
+  const shortlistResult = await finalizeApplicationAfterScreening(application, { io });
+  await notifyApplicationOutcome({
+    application,
+    job,
+    user,
+    shortlistResult,
+    io,
+  });
+
+  return { application, screening, shortlistResult };
+}
+
+async function markApplicationScreeningFailed({ applicationId, user, job, errorMessage, io }) {
+  const application = await JobApplication.findOne({ id: applicationId });
+  if (!application || application.status !== 'screening') return;
+
+  application.status = 'applied';
+  application.recommendation = 'Screening delayed';
+  application.jdFitSummary = 'AI screening could not finish automatically. A recruiter will review your resume manually.';
+  application.screening = { error: errorMessage, escalate_to_human: true };
+  await application.save();
+
+  await notifyUsers([user.id], {
+    type: 'application_submitted',
+    title: 'Application received',
+    message: `Your resume for ${job.title} was saved. AI screening is delayed — a recruiter will review it manually.`,
+    link: '/dashboard/job-openings',
+    meta: { applicationId: application.id, jobId: job.id },
+  }, io);
+
+  const recruiters = await User.find({
+    role: { $in: ['hr_recruiter', 'management_admin'] },
+    isActive: { $ne: false },
+  }).lean();
+  const recruiterIds = [...new Set([...recruiters.map((u) => u.id), job.createdBy].filter(Boolean))];
+  if (recruiterIds.length) {
+    await notifyUsers(recruiterIds, {
+      type: 'new_application',
+      title: 'Application needs manual screening',
+      message: `${application.candidateName} applied for ${job.title} — AI screening failed (${errorMessage}). Review resume in Applications.`,
+      link: '/dashboard/applications',
+      meta: { applicationId: application.id, jobId: job.id, candidateId: application.candidateId },
+    }, io);
+  }
+}
+
+function runApplicationScreeningInBackground(params) {
+  setImmediate(async () => {
+    try {
+      await completeApplicationScreening(params);
+    } catch (err) {
+      console.error('[apply:bg] screening failed:', err.message, err.stack?.split('\n').slice(0, 3).join(' | '));
+      try {
+        await markApplicationScreeningFailed({
+          applicationId: params.applicationId,
+          user: params.user,
+          job: params.job,
+          errorMessage: err.message || 'ML screening failed',
+          io: params.io,
+        });
+      } catch (notifyErr) {
+        console.error('[apply:bg] failure notify error:', notifyErr.message);
+      }
+    }
+  });
+}
+
 module.exports = {
   processCandidateApplication,
+  stageApplicationForScreening,
+  completeApplicationScreening,
+  runApplicationScreeningInBackground,
   createJobApplicationRecord,
   finalizeApplicationAfterScreening,
+  notifyApplicationOutcome,
   normalizeEmail,
   SCREENING_AUTO_SHORTLIST_THRESHOLD: SCREENING_PASS_THRESHOLD,
 };

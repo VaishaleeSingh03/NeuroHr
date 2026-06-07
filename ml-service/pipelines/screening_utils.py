@@ -18,7 +18,7 @@ def compact_candidate_payload(candidate: dict) -> dict:
         "projects": (candidate.get("projects") or [])[:4],
         "certifications": (candidate.get("certifications") or [])[:5],
         "repos": (candidate.get("repo_urls") or [])[:3],
-        "resume_excerpt": (candidate.get("_raw_text") or "")[:1400],
+        "resume_excerpt": (candidate.get("_raw_text") or "")[:800],
     }
 
 
@@ -39,7 +39,7 @@ def compact_jd_payload(jd_requirements: dict) -> str:
     ]
     excerpt = (jd_requirements.get("description_excerpt") or "").strip()
     if excerpt:
-        parts.append(f"JD excerpt:\n{excerpt[:1200]}")
+        parts.append(f"JD excerpt:\n{excerpt[:800]}")
     return "\n".join(parts)
 
 
@@ -54,6 +54,20 @@ def normalize_screening_result(result: dict, procedure: str, candidate_name: str
         raise GroqApiError("Groq screening returned invalid response.")
 
     score = result.get("total_score")
+    if score is None:
+        dims = result.get("dimension_scores")
+        if isinstance(dims, dict) and dims:
+            try:
+                derived = sum(
+                    float(item.get("score", 0))
+                    for item in dims.values()
+                    if isinstance(item, dict) and item.get("score") is not None
+                )
+                if derived > 0:
+                    result["total_score"] = derived
+                    score = derived
+            except (TypeError, ValueError):
+                pass
     if score is None:
         raise GroqApiError("Groq screening response missing total_score.")
     try:

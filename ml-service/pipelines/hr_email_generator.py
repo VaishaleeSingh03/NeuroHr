@@ -4,10 +4,7 @@
 
 import json
 
-
-
-from config import get_settings
-from pipelines.groq_service import GroqApiError, groq_json, require_groq
+from pipelines.groq_service import GroqApiError, groq_email_json, require_groq
 
 
 
@@ -295,16 +292,12 @@ def generate_hr_email(email_type: str, context: dict) -> dict:
 
 
 
-    settings = get_settings()
     email_max_tokens = 2560 if email_type == "payslip" else 2048
-    strong_model = getattr(settings, "groq_model_strong", None) or getattr(settings, "groq_model_fast", None)
 
-    result = groq_json(
+    result = groq_email_json(
         "Expert HR communications writer. Output JSON only. Keep html concise — one table, brief prose.",
         prompt,
-        strict=True,
         max_tokens=email_max_tokens,
-        model=strong_model,
     )
 
     if not isinstance(result, dict) or not result.get("subject") or not result.get("html"):
