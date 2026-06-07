@@ -258,14 +258,21 @@ export function needsAiInterviewHrReview(app: PipelineApplication | null | undef
 
 
 
-/** True when HR or pipeline marked the candidate rejected — no offer actions. */
-export function isCandidateRejected(app: PipelineApplication | null | undefined): boolean {
+/** Candidate declined an offer — not the same as HR rejecting the application. */
+export function isOfferDeclined(app: PipelineApplication | null | undefined): boolean {
   if (!app) return false;
   return (
-    app.status === "rejected"
-    || app.status === "offer_declined"
-    || app.finalDecision?.decision === "rejected"
+    app.status === "offer_declined"
     || app.finalDecision?.offerResponse === "rejected"
+  );
+}
+
+/** True when HR or pipeline marked the candidate rejected — no offer actions. */
+export function isCandidateRejected(app: PipelineApplication | null | undefined): boolean {
+  if (!app || isOfferDeclined(app)) return false;
+  return (
+    app.status === "rejected"
+    || app.finalDecision?.decision === "rejected"
     || app.aiInterviewReview?.decision === "rejected"
   );
 }

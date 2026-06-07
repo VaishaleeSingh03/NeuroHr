@@ -41,4 +41,6 @@ module.exports = {
   /** groq = direct Groq API (fast); template = instant branded templates */
   hrEmailMode: (process.env.HR_EMAIL_MODE || 'groq').toLowerCase(),
   hrEmailGroqTimeoutMs: parseInt(process.env.HR_EMAIL_GROQ_TIMEOUT_MS || '12000', 10),
+  smtpTimeoutMs: parseInt(process.env.SMTP_TIMEOUT_MS || '25000', 10),
+  offerEmailGroqTimeoutMs: parseInt(process.env.OFFER_EMAIL_GROQ_TIMEOUT_MS || '25000', 10),
 };

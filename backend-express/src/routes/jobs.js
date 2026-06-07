@@ -711,15 +711,28 @@ router.post('/applications/:appId/final-decision', auth(RECRUITER_ROLES), async 
 
   const obj = app.toObject();
   delete obj.resumeData;
+  if (emailResult.offerLetterHtml && obj.finalDecision) {
+    obj.finalDecision.offerLetterHtml = emailResult.offerLetterHtml;
+    obj.finalDecision.offerLetterSubject = emailResult.offerLetterSubject;
+    if (emailResult.candidateEmailSent) {
+      obj.finalDecision.offerEmailSentAt = new Date();
+    }
+  }
   res.json({
     ...obj,
     hasResume: hasStoredResume(app),
-    email_queued: emailResult.email_queued,
+    email_sent: emailResult.candidateEmailSent,
+    email_error: emailResult.candidateEmailError || null,
+    email_queued: false,
     email_recipient: emailResult.recipient,
     employee_onboarded: false,
     message: decision === 'selected'
-      ? `Offer recorded — letter email sending to ${emailResult.recipient || 'candidate'}`
-      : `Decision recorded — email sending to ${emailResult.recipient || 'candidate'}`,
+      ? (emailResult.candidateEmailSent
+        ? `Offer sent to ${emailResult.recipient || 'candidate'}`
+        : `Offer saved but email failed${emailResult.candidateEmailError ? `: ${emailResult.candidateEmailError}` : ''}`)
+      : (emailResult.candidateEmailSent
+        ? `Rejection email sent to ${emailResult.recipient || 'candidate'}`
+        : `Decision recorded but email failed${emailResult.candidateEmailError ? `: ${emailResult.candidateEmailError}` : ''}`),
   });
 });
 
@@ -779,10 +792,12 @@ router.post('/applications/:appId/offer-response', auth(['candidate']), async (r
 
   const obj = app.toObject();
   delete obj.resumeData;
+  const declined = response === 'rejected';
   res.json({
     ...sanitizeApplication(obj),
     hasResume: hasStoredResume(app),
     hr_email_sent: emailResult.hrEmailSent,
+    hr_email_error: emailResult.hrEmailError || null,
     employee_onboarded: onboardResult?.created || false,
     employee_id: onboardResult?.employee?.id,
     leave_entitlements: onboardResult?.employee?.leaveEntitlements,
@@ -790,7 +805,12 @@ router.post('/applications/:appId/offer-response', auth(['candidate']), async (r
       ? (onboardResult?.employee
         ? `Offer accepted — you are now an employee (ID ${onboardResult.employee.id})`
         : 'Offer accepted — onboarding in progress')
-      : 'Offer declined — HR has been notified',
+      : (emailResult.hrEmailSent
+        ? 'Offer declined — recorded on your portal'
+        : 'Offer declined — recorded on portal (HR notification email failed)'),
+    ...(declined && emailResult.hrEmailError && !emailResult.hrEmailSent
+      ? { email_warning: emailResult.hrEmailError }
+      : {}),
   });
 });
 

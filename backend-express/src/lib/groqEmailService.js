@@ -244,23 +244,42 @@ async function generateGroqEmail(emailType, context, { brand = 'hr' } = {}) {
   }
 
   const timeoutMs = emailType === 'offer_letter'
-    ? 60000
+    ? (config.offerEmailGroqTimeoutMs || 25000)
     : (config.hrEmailGroqTimeoutMs || 12000);
-  try {
-    const payload = await ml.generateHrEmail(
-      { email_type: emailType, context: enriched },
-      { timeout: timeoutMs },
-    );
-    return {
-      subject: payload.subject,
-      html: wrapGroqEmail(payload.subject, payload.html, wrapBrand),
-      body_html: payload.html,
-      preview_text: payload.preview_text,
-      generated_by: 'groq_ml',
-    };
-  } catch (err) {
-    errors.push(`ml:${err.message}`);
-    console.warn(`[email] ML Groq ${emailType} failed:`, err.message);
+
+  if (emailType !== 'offer_letter') {
+    const skipMlForHrAlerts = [
+      'leave_request',
+      'reimbursement_request',
+      'offer_accepted_hr',
+      'offer_rejected_hr',
+      'offer_sent_hr',
+      'final_rejected_hr',
+      'interview_result_hr',
+    ].includes(emailType);
+
+    if (!skipMlForHrAlerts) {
+      try {
+        const payload = await ml.generateHrEmail(
+          { email_type: emailType, context: enriched },
+          { timeout: timeoutMs },
+        );
+        return {
+          subject: payload.subject,
+          html: wrapGroqEmail(payload.subject, payload.html, wrapBrand),
+          body_html: payload.html,
+          preview_text: payload.preview_text,
+          generated_by: 'groq_ml',
+        };
+      } catch (err) {
+        errors.push(`ml:${err.message}`);
+        console.warn(`[email] ML Groq ${emailType} failed:`, err.message);
+      }
+    } else {
+      errors.push('ml:skipped_for_hr_delivery');
+    }
+  } else {
+    errors.push('ml:skipped_for_offer_delivery');
   }
 
   const mail = buildFallbackEmail(emailType, enriched);

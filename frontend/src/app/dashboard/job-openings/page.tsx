@@ -16,6 +16,7 @@ import RichTextEditor, { getRichHtml } from "@/components/ui/RichTextEditor";
 import { jobsAPI } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import ApplicationStatusBadge from "@/components/ui/ApplicationStatusBadge";
+import OfferDeclinedNotice from "@/components/ui/OfferDeclinedNotice";
 import RejectedNotice from "@/components/ui/RejectedNotice";
 import {
   isApplicationRejected, isScreeningRejected, SCREENING_PASS_THRESHOLD,
@@ -25,7 +26,7 @@ import { getApiErrorMessage } from "@/lib/errors";
 import HiringFlowSteps, { CANDIDATE_APPLY_STEPS } from "@/components/hiring/HiringFlowSteps";
 import HiringPipelineFlow from "@/components/hiring/HiringPipelineFlow";
 import {
-  getPipelineStep, pipelineStatusLabel, isOfferPending, isCandidateRejected, type HumanInterview, type FinalDecision,
+  getPipelineStep, pipelineStatusLabel, isOfferPending, isOfferDeclined, isCandidateRejected, type HumanInterview, type FinalDecision,
 } from "@/lib/hiringPipeline";
 
 interface Job {
@@ -80,7 +81,7 @@ export default function JobOpeningsPage() {
     jobTitle: string;
     rejected?: boolean;
   } | null>(null);
-  const [respondingOfferId, setRespondingOfferId] = useState<number | null>(null);
+  const [respondingOffer, setRespondingOffer] = useState<{ id: number; action: "accepted" | "rejected" } | null>(null);
 
   const load = () => {
     jobsAPI.list().then((r) => setJobs(r.data)).catch(() => {});
@@ -173,10 +174,18 @@ export default function JobOpeningsPage() {
   const handleOfferResponse = async (appId: number, response: "accepted" | "rejected") => {
     const label = response === "accepted" ? "accept" : "decline";
     if (!window.confirm(`Are you sure you want to ${label} this offer?`)) return;
-    setRespondingOfferId(appId);
+    setRespondingOffer({ id: appId, action: response });
     try {
       const { data } = await jobsAPI.offerResponse(appId, { response });
-      toast.success((data as { message?: string }).message || `Offer ${response}`);
+      const payload = data as { message?: string; hr_email_sent?: boolean; email_warning?: string };
+      if (response === "rejected") {
+        toast.success(payload.message || "Offer declined — recorded on your portal");
+        if (payload.email_warning) {
+          toast.error(`HR email notification failed: ${payload.email_warning}`, { duration: 6000 });
+        }
+      } else {
+        toast.success(payload.message || "Offer accepted");
+      }
       dispatchNotificationsRefresh();
       load();
       if (response === "accepted") {
@@ -186,7 +195,7 @@ export default function JobOpeningsPage() {
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, `Failed to ${label} offer`));
     } finally {
-      setRespondingOfferId(null);
+      setRespondingOffer(null);
     }
   };
 
@@ -248,14 +257,15 @@ export default function JobOpeningsPage() {
               </thead>
               <tbody>
                 {applications.map((a) => {
-                  const rejected = isCandidateRejected(a) || isApplicationRejected(a.status, a.interview);
+                  const offerDeclined = isOfferDeclined(a);
+                  const hrRejected = !offerDeclined && (isCandidateRejected(a) || isApplicationRejected(a.status, a.interview));
                   const hired = a.status === "hired" || a.finalDecision?.offerResponse === "accepted";
-                  const offerPending = isOfferPending(a) && !rejected;
+                  const offerPending = isOfferPending(a);
                   return (
                     <tr
                       key={a.id}
                       className={`border-b border-aqua/10 ${
-                        rejected ? "bg-red-50/50" : hired ? "bg-green-50/40" : offerPending ? "bg-amber-50/40" : ""
+                        hrRejected ? "bg-red-50/50" : offerDeclined ? "bg-slate-50/80" : hired ? "bg-green-50/40" : offerPending ? "bg-amber-50/40" : ""
                       }`}
                     >
                       <td className="py-3 pr-3 font-medium text-heading align-top">{a.jobTitle}</td>
@@ -269,25 +279,30 @@ export default function JobOpeningsPage() {
                             <button
                               type="button"
                               onClick={() => handleOfferResponse(a.id, "accepted")}
-                              disabled={respondingOfferId === a.id}
+                              disabled={respondingOffer?.id === a.id}
                               className="btn-primary text-xs inline-flex items-center gap-1"
                             >
-                              {respondingOfferId === a.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <ThumbsUp className="w-3 h-3" />}
+                              {respondingOffer?.id === a.id && respondingOffer.action === "accepted"
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <ThumbsUp className="w-3 h-3" />}
                               Accept
                             </button>
                             <button
                               type="button"
                               onClick={() => handleOfferResponse(a.id, "rejected")}
-                              disabled={respondingOfferId === a.id}
+                              disabled={respondingOffer?.id === a.id}
                               className="btn-secondary text-xs text-red-600 inline-flex items-center gap-1"
                             >
-                              <ThumbsDown className="w-3 h-3" /> Decline
+                              {respondingOffer?.id === a.id && respondingOffer.action === "rejected"
+                                ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : <ThumbsDown className="w-3 h-3" />}
+                              Decline
                             </button>
                           </div>
                         ) : hired ? (
                           <span className="text-xs text-green-700 font-medium">Accepted</span>
-                        ) : a.finalDecision?.offerResponse === "rejected" || a.status === "offer_declined" ? (
-                          <span className="text-xs text-muted">Declined</span>
+                        ) : offerDeclined ? (
+                          <span className="text-xs text-muted font-medium">Offer declined</span>
                         ) : (
                           <span className="text-xs text-muted">—</span>
                         )}
@@ -348,8 +363,19 @@ export default function JobOpeningsPage() {
 
                 {selected.applied ? (() => {
                   const app = applicationForJob(selected.id);
-                  const rejected = app ? isCandidateRejected(app) || isApplicationRejected(app.status, app.interview) : false;
-                  if (rejected) {
+                  const offerDeclined = app ? isOfferDeclined(app) : false;
+                  const hrRejected = app && !offerDeclined
+                    ? (isCandidateRejected(app) || isApplicationRejected(app.status, app.interview))
+                    : false;
+                  if (offerDeclined) {
+                    return (
+                      <div className="border-t border-aqua/10 pt-4 space-y-3">
+                        <OfferDeclinedNotice audience="candidate" jobTitle={app?.jobTitle || selected.title} />
+                        <ApplicationStatusBadge status={app?.status || "offer_declined"} size="sm" />
+                      </div>
+                    );
+                  }
+                  if (hrRejected) {
                     const screeningOnly = app ? isScreeningRejected(app.jdScore) && app.status === "rejected" : false;
                     return (
                       <div className="border-t border-aqua/10 pt-4 space-y-3">
@@ -426,19 +452,24 @@ export default function JobOpeningsPage() {
                             <button
                               type="button"
                               onClick={() => handleOfferResponse(app.id, "accepted")}
-                              disabled={respondingOfferId === app.id}
+                              disabled={respondingOffer?.id === app.id}
                               className="btn-primary text-xs inline-flex items-center gap-1.5"
                             >
-                              {respondingOfferId === app.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ThumbsUp className="w-3.5 h-3.5" />}
+                              {respondingOffer?.id === app.id && respondingOffer.action === "accepted"
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <ThumbsUp className="w-3.5 h-3.5" />}
                               Accept offer
                             </button>
                             <button
                               type="button"
                               onClick={() => handleOfferResponse(app.id, "rejected")}
-                              disabled={respondingOfferId === app.id}
+                              disabled={respondingOffer?.id === app.id}
                               className="btn-secondary text-xs text-red-600 inline-flex items-center gap-1.5"
                             >
-                              <ThumbsDown className="w-3.5 h-3.5" /> Decline offer
+                              {respondingOffer?.id === app.id && respondingOffer.action === "rejected"
+                                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                : <ThumbsDown className="w-3.5 h-3.5" />}
+                              Decline offer
                             </button>
                           </div>
                         </div>

@@ -112,29 +112,43 @@ router.post('/leave', auth(), async (req, res) => {
   });
 
   const config = require('../config');
-  const { runEmailInBackground } = require('../lib/emailAsync');
   const { buildLeaveRequestContext } = require('../lib/emailContext');
   const { sendAgentGroqEmail } = require('../lib/groqEmailService');
   const hrEmail = config.hrEmail;
 
+  let emailSent = false;
+  let emailError = null;
   if (hrEmail) {
     const leaveSummary = await getEmployeeLeaveSummary(emp);
     const ctx = buildLeaveRequestContext(emp, leave.toObject(), { leaveSummary, check });
-    runEmailInBackground(
-      () => sendAgentGroqEmail(hrEmail, 'leave_request', ctx),
-      `leave-${leave.id}`,
-    );
+    try {
+      console.log(`[email] Sending leave request notification for leave ${leave.id} to ${hrEmail}`);
+      const result = await sendAgentGroqEmail(hrEmail, 'leave_request', ctx);
+      emailSent = Boolean(result.sent);
+      emailError = result.sent ? null : (result.reason || 'send_failed');
+      if (!result.sent) {
+        console.error(`[email] Leave request mail failed (leave ${leave.id}):`, emailError);
+      }
+    } catch (err) {
+      emailError = err.message;
+      console.error(`[email] Leave request mail error (leave ${leave.id}):`, err.message);
+    }
+  } else {
+    emailError = 'hr_email_not_configured';
   }
 
   res.status(201).json({
     ...leave.toObject(),
-    email_sent: null,
-    email_queued: Boolean(hrEmail),
+    email_sent: emailSent,
+    email_error: emailError,
+    email_queued: false,
     exceedsBalance: check.exceedsBalance,
     warning: check.exceedsBalance ? 'This request exceeds your remaining balance — excess days may be deducted from payroll' : undefined,
-    message: hrEmail
-      ? 'Leave request submitted — HR notification sending'
-      : 'Leave request submitted — HR email not configured',
+    message: emailSent
+      ? 'Leave request submitted — HR notified by email'
+      : (hrEmail
+        ? `Leave request submitted but HR email failed${emailError ? `: ${emailError}` : ''}`
+        : 'Leave request submitted — HR email not configured'),
   });
 });
 

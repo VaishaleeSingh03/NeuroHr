@@ -10,13 +10,30 @@ let agentSmtpTransporter = null;
 
 const MAX_ATTEMPTS_PER_CHANNEL = 1;
 const RETRY_DELAY_MS = 350;
-const SMTP_TIMEOUT_MS = 12000;
+const SMTP_TIMEOUT_MS = config.smtpTimeoutMs || 25000;
 
 const TRANSPORT_OPTS = {
   connectionTimeout: SMTP_TIMEOUT_MS,
   greetingTimeout: SMTP_TIMEOUT_MS,
   socketTimeout: SMTP_TIMEOUT_MS,
 };
+
+function normalizeRecipient(to) {
+  const recipient = String(to || '').trim().toLowerCase();
+  if (!recipient || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+    return null;
+  }
+  return recipient;
+}
+
+function isAnyMailConfigured() {
+  return Boolean(
+    getHrOAuthAuth()
+    || getAgentOAuthAuth()
+    || (config.smtpUser && config.smtpPassword)
+    || (config.agentSmtpUser && config.agentSmtpPassword),
+  );
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -95,10 +112,11 @@ async function sendViaTransport({
   if (!transport || !fromUser) {
     return { sent: false, reason: 'transport_not_configured', sender };
   }
+  const recipient = normalizeRecipient(to) || to;
   try {
     const mail = {
       from: `${fromLabel} <${fromUser}>`,
-      to,
+      to: recipient,
       subject,
       html,
       replyTo: config.hrEmail || config.smtpUser || fromUser,
@@ -111,10 +129,10 @@ async function sendViaTransport({
       }));
     }
     await transport.sendMail(mail);
-    console.log(`[email:${sender}] Sent from ${fromUser} to ${to}: ${subject}`);
+    console.log(`[email:${sender}] Sent from ${fromUser} to ${recipient}: ${subject}`);
     return { sent: true, sender, from: fromUser };
   } catch (err) {
-    console.error(`[email:${sender}] Failed to ${to}:`, err.message);
+    console.error(`[email:${sender}] Failed to ${recipient}:`, err.message);
     return { sent: false, reason: err.message, sender };
   }
 }
@@ -124,7 +142,13 @@ async function sendViaTransport({
  * Maximizes delivery on deploy when one channel is missing or flaky.
  */
 async function sendReliableEmail(to, subject, html, attachments = [], { prefer = 'hr' } = {}) {
-  if (!to) return { sent: false, reason: 'no_recipient' };
+  const recipient = normalizeRecipient(to);
+  if (!recipient) return { sent: false, reason: 'invalid_recipient' };
+
+  if (!isAnyMailConfigured()) {
+    console.error('[email] No mail channel configured (HR/Agent OAuth or SMTP password required)');
+    return { sent: false, reason: 'transport_not_configured' };
+  }
 
   const channels = prefer === 'agent'
     ? [
@@ -147,7 +171,7 @@ async function sendReliableEmail(to, subject, html, attachments = [], { prefer =
         transport: ch.transport(),
         fromUser: ch.user,
         fromLabel: ch.label,
-        to,
+        to: recipient,
         subject,
         html,
         attachments,
@@ -215,4 +239,6 @@ module.exports = {
   sendEmail,
   sendTemplateEmail,
   resetTransporters,
+  normalizeRecipient,
+  isAnyMailConfigured,
 };

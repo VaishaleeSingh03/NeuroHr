@@ -22,7 +22,7 @@ import HiringFlowSteps, { RECRUITER_FLOW_STEPS } from "@/components/hiring/Hirin
 import HiringPipelineFlow from "@/components/hiring/HiringPipelineFlow";
 import {
   getPipelineStep, canScheduleHumanInterview, canCompleteHumanPanel, canSendFinalDecision,
-  needsAiInterviewHrReview, pipelineStatusLabel,
+  needsAiInterviewHrReview, pipelineStatusLabel, isOfferDeclined,
   type HumanInterview, type FinalDecision, type AiInterviewReview,
 } from "@/lib/hiringPipeline";
 import {
@@ -32,6 +32,7 @@ import Link from "next/link";
 import ApplicationStatusBadge from "@/components/ui/ApplicationStatusBadge";
 import ScreeningResultCard from "@/components/hiring/ScreeningResultCard";
 import RejectedNotice from "@/components/ui/RejectedNotice";
+import OfferDeclinedNotice from "@/components/ui/OfferDeclinedNotice";
 import RichTextEditor, { getRichHtml, isRichTextEmpty } from "@/components/ui/RichTextEditor";
 import { toEditorHtml } from "@/lib/tiptapContent";
 import {
@@ -104,8 +105,7 @@ const EMPTY_PANEL_INTERVIEWER: PanelInterviewer = { name: "", email: "", role: "
 export default function ApplicationsPage() {
   const [apps, setApps] = useState<Application[]>([]);
   const [selected, setSelected] = useState<Application | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [statusUpdating, setStatusUpdating] = useState(false);
+  const [statusAction, setStatusAction] = useState<"shortlisted" | "rejected" | null>(null);
   const [scheduleAt, setScheduleAt] = useState(defaultDeadlineLocal);
   const [scheduling, setScheduling] = useState(false);
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
@@ -123,12 +123,12 @@ export default function ApplicationsPage() {
   const [humanNotes, setHumanNotes] = useState("");
   const [schedulingHuman, setSchedulingHuman] = useState(false);
   const [aiReviewNote, setAiReviewNote] = useState("");
-  const [aiReviewing, setAiReviewing] = useState(false);
+  const [aiReviewAction, setAiReviewAction] = useState<"qualified" | "reject" | null>(null);
   const [finalSalary, setFinalSalary] = useState("");
   const [finalGender, setFinalGender] = useState<"male" | "female" | "other">("other");
   const [finalStartDate, setFinalStartDate] = useState("");
   const [finalMessage, setFinalMessage] = useState("");
-  const [deciding, setDeciding] = useState(false);
+  const [finalDecisionAction, setFinalDecisionAction] = useState<"selected" | "rejected" | null>(null);
   const [panelCompleteNotes, setPanelCompleteNotes] = useState("");
   const [completingPanel, setCompletingPanel] = useState(false);
 
@@ -246,7 +246,8 @@ export default function ApplicationsPage() {
   const updateStatus = async (status: string, reason?: "screening" | "interview") => {
     if (!selected) return;
     const prevStatus = selected.status;
-    setStatusUpdating(true);
+    const action = status === "rejected" ? "rejected" : "shortlisted";
+    setStatusAction(action);
     setSelected((s) => (s ? { ...s, status } : null));
     try {
       await jobsAPI.updateApplicationStatus(selected.id, status, reason ? { reason } : undefined);
@@ -260,7 +261,7 @@ export default function ApplicationsPage() {
       toast.error("Update failed");
       setSelected((s) => (s ? { ...s, status: prevStatus } : null));
     } finally {
-      setStatusUpdating(false);
+      setStatusAction(null);
     }
   };
 
@@ -298,6 +299,7 @@ export default function ApplicationsPage() {
     : false;
   const messageTemplates = selected ? getRecruiterMessageTemplates(selected) : [];
   const selectedRejected = selected?.status === "rejected";
+  const selectedOfferDeclined = selected ? isOfferDeclined(selected) : false;
   const belowScreeningGuideline = selected ? isScreeningRejected(selected.jdScore) && !selectedRejected : false;
   const belowInterviewGuideline = selected?.interview?.status === "completed"
     && selected.interview.finalScore != null
@@ -332,7 +334,7 @@ export default function ApplicationsPage() {
 
   const submitAiInterviewDecision = async (decision: "qualified" | "reject") => {
     if (!selected) return;
-    setAiReviewing(true);
+    setAiReviewAction(decision);
     try {
       const { data } = await jobsAPI.aiInterviewDecision(selected.id, {
         decision,
@@ -345,7 +347,7 @@ export default function ApplicationsPage() {
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Failed to record HR decision"));
     } finally {
-      setAiReviewing(false);
+      setAiReviewAction(null);
     }
   };
 
@@ -415,7 +417,7 @@ export default function ApplicationsPage() {
       toast.error("Enter salary / offer for this role before sending the offer email");
       return;
     }
-    setDeciding(true);
+    setFinalDecisionAction(decision);
     try {
       const { data } = await jobsAPI.finalDecision(selected.id, {
         decision,
@@ -424,21 +426,48 @@ export default function ApplicationsPage() {
         gender: finalGender,
         message: getRichHtml(finalMessage),
       });
-      const payload = data as Application & { email_sent?: boolean; email_queued?: boolean; message?: string };
-      toast.success(
-        payload.message
+      const payload = data as Application & {
+        email_sent?: boolean;
+        email_error?: string | null;
+        email_queued?: boolean;
+        message?: string;
+      };
+      if (payload.email_sent === false) {
+        toast.error(
+          payload.message
+          || payload.email_error
+          || `Email could not be sent to ${selected.candidateEmail}. Check SMTP/OAuth on the server.`,
+          { duration: 8000 },
+        );
+      } else {
+        toast.success(
+          payload.message
           || (decision === "selected"
-            ? `Offer recorded — email sending to ${selected.candidateEmail}`
-            : `Decision recorded — email sending to ${selected.candidateEmail}`),
-      );
+            ? `Offer sent to ${selected.candidateEmail}`
+            : `Decision email sent to ${selected.candidateEmail}`),
+        );
+      }
       setSelected(payload);
       load();
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, "Failed to record decision"));
     } finally {
-      setDeciding(false);
+      setFinalDecisionAction(null);
     }
   };
+
+  const actionBusy = Boolean(
+    statusAction || scheduling || aiReviewAction || schedulingHuman
+    || completingPanel || finalDecisionAction || sendingMessage,
+  );
+
+  const pipelineProcessing =
+    (pipelineStep === 6 && statusAction !== null)
+    || (pipelineStep === 7 && scheduling)
+    || (pipelineStep === 9 && aiReviewAction !== null)
+    || (pipelineStep === 10 && schedulingHuman)
+    || (pipelineStep === 11 && completingPanel)
+    || (pipelineStep === 12 && finalDecisionAction !== null);
 
   return (
     <div className="page-container">
@@ -457,7 +486,7 @@ export default function ApplicationsPage() {
             <p className="text-xs font-semibold text-label mb-2">
               {selected.candidateName} — {pipelineStatusLabel(selected)}
             </p>
-            <HiringPipelineFlow currentStep={pipelineStep} linkable processing={statusUpdating || aiReviewing} />
+            <HiringPipelineFlow currentStep={pipelineStep} linkable processing={pipelineProcessing} />
           </div>
         )}
       </GlassCard>
@@ -512,6 +541,14 @@ export default function ApplicationsPage() {
                   <ScoreIndicator score={selected.jdScore || 0} size="sm" />
                 </div>
 
+                {selectedOfferDeclined && (
+                  <OfferDeclinedNotice
+                    audience="recruiter"
+                    jobTitle={selected.jobTitle}
+                    className="mb-4"
+                  />
+                )}
+
                 {selectedRejected && (
                   <RejectedNotice
                     audience="recruiter"
@@ -562,10 +599,10 @@ export default function ApplicationsPage() {
                       </p>
                       <button
                         onClick={() => updateStatus("shortlisted")}
-                        disabled={statusUpdating}
+                        disabled={statusAction !== null || actionBusy}
                         className="btn-primary text-sm flex items-center gap-1.5"
                       >
-                        {statusUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        {statusAction === "shortlisted" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                         Shortlist & enable AI interview
                       </button>
                     </div>
@@ -748,7 +785,7 @@ export default function ApplicationsPage() {
                       <p className="text-xs text-muted mb-2">Candidate can join anytime before this date & time.</p>
                       <button
                         onClick={scheduleInterview}
-                        disabled={scheduling || !scheduleAt}
+                        disabled={scheduling || !scheduleAt || actionBusy}
                         className="btn-primary flex items-center gap-2"
                       >
                         {scheduling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
@@ -812,18 +849,18 @@ export default function ApplicationsPage() {
                       <div className="flex flex-wrap gap-2">
                         <button
                           onClick={() => submitAiInterviewDecision("qualified")}
-                          disabled={aiReviewing}
+                          disabled={aiReviewAction !== null || actionBusy}
                           className="btn-primary text-xs flex items-center gap-1.5"
                         >
-                          {aiReviewing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                          {aiReviewAction === "qualified" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                           Pass — enable human round
                         </button>
                         <button
                           onClick={() => submitAiInterviewDecision("reject")}
-                          disabled={aiReviewing}
+                          disabled={aiReviewAction !== null || actionBusy}
                           className="btn-secondary text-xs text-red-600 flex items-center gap-1.5"
                         >
-                          {aiReviewing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                          {aiReviewAction === "reject" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
                           Reject
                         </button>
                       </div>
@@ -974,7 +1011,7 @@ export default function ApplicationsPage() {
                         variant="minimal"
                         className="text-sm"
                       />
-                      <button onClick={scheduleHumanInterview} disabled={schedulingHuman || panelInterviewers.length === 0} className="btn-primary text-xs flex items-center gap-1.5">
+                      <button onClick={scheduleHumanInterview} disabled={schedulingHuman || panelInterviewers.length === 0 || actionBusy} className="btn-primary text-xs flex items-center gap-1.5">
                         {schedulingHuman ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
                         Schedule panel &amp; send emails
                       </button>
@@ -1018,7 +1055,7 @@ export default function ApplicationsPage() {
                       />
                       <button
                         onClick={completeHumanPanel}
-                        disabled={completingPanel}
+                        disabled={completingPanel || actionBusy}
                         className="btn-primary text-xs flex items-center gap-1.5"
                       >
                         {completingPanel ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -1080,12 +1117,20 @@ export default function ApplicationsPage() {
                         className="text-sm"
                       />
                       <div className="flex flex-wrap gap-2">
-                        <button onClick={() => submitFinalDecision("selected")} disabled={deciding || !finalSalary.trim()} className="btn-primary text-xs flex items-center gap-1">
-                          {deciding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                        <button
+                          onClick={() => submitFinalDecision("selected")}
+                          disabled={finalDecisionAction !== null || !finalSalary.trim() || actionBusy}
+                          className="btn-primary text-xs flex items-center gap-1"
+                        >
+                          {finalDecisionAction === "selected" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
                           Send offer email
                         </button>
-                        <button onClick={() => submitFinalDecision("rejected")} disabled={deciding} className="btn-secondary text-xs text-red-600 flex items-center gap-1">
-                          {deciding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                        <button
+                          onClick={() => submitFinalDecision("rejected")}
+                          disabled={finalDecisionAction !== null || actionBusy}
+                          className="btn-secondary text-xs text-red-600 flex items-center gap-1"
+                        >
+                          {finalDecisionAction === "rejected" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
                           Send rejection email
                         </button>
                       </div>
@@ -1123,17 +1168,21 @@ export default function ApplicationsPage() {
                   {!selectedRejected && (
                     <div className="flex flex-wrap gap-2 pt-2">
                       {!isShortlisted && (
-                        <button onClick={() => updateStatus("shortlisted")} disabled={statusUpdating} className="btn-primary text-xs inline-flex items-center gap-1">
-                          {statusUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                        <button
+                          onClick={() => updateStatus("shortlisted")}
+                          disabled={statusAction !== null || actionBusy}
+                          className="btn-primary text-xs inline-flex items-center gap-1"
+                        >
+                          {statusAction === "shortlisted" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                           Shortlist
                         </button>
                       )}
                       <button
                         onClick={() => updateStatus("rejected", selected.interview?.status === "completed" ? "interview" : "screening")}
-                        disabled={statusUpdating}
+                        disabled={statusAction !== null || actionBusy}
                         className="btn-secondary text-xs text-red-600 inline-flex items-center gap-1"
                       >
-                        {statusUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                        {statusAction === "rejected" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
                         Reject
                       </button>
                     </div>

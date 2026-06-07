@@ -309,10 +309,16 @@ async function notifyHumanInterviewScheduled(app, aiInterview) {
 }
 
 async function sendCandidateOfferEmail(app) {
-  if (!app.candidateEmail) return { sent: false, reason: 'no_candidate_email' };
+  const { normalizeRecipient } = require('./emailService');
+  const to = normalizeRecipient(app.candidateEmail);
+  if (!to) return { sent: false, reason: 'no_candidate_email' };
   const ctx = await buildCandidateOfferContext(app);
   const { sendHrGroqEmail } = require('./groqEmailService');
-  const result = await sendHrGroqEmail(app.candidateEmail, 'offer_letter', ctx);
+  console.log(`[email] Sending offer letter to ${to} (app ${app.id})`);
+  const result = await sendHrGroqEmail(to, 'offer_letter', ctx);
+  if (!result.sent) {
+    console.error(`[email] Offer letter failed for app ${app.id}:`, result.reason);
+  }
   return {
     ...result,
     offerLetterHtml: result.html,
@@ -363,34 +369,33 @@ async function notifyFinalDecision(app, io) {
   }
 
   const appId = app.id;
-  const isOffer = selected;
-  runEmailInBackground(async () => {
-    const emailResult = await sendFinalDecisionEmails(app);
-    if (isOffer && emailResult.candidateEmailSent) {
-      const update = { 'finalDecision.offerEmailSentAt': new Date() };
-      if (emailResult.offerLetterHtml) {
-        update['finalDecision.offerLetterHtml'] = emailResult.offerLetterHtml;
-        update['finalDecision.offerLetterSubject'] = emailResult.offerLetterSubject
-          || `Offer — ${app.jobTitle}`;
-      }
-      await JobApplication.updateOne({ id: appId }, { $set: update });
+  // Send synchronously — offer/rejection must complete before API response (Render drops bg work).
+  const emailResult = await sendFinalDecisionEmails(app);
+
+  if (selected && emailResult.candidateEmailSent) {
+    const update = { 'finalDecision.offerEmailSentAt': new Date() };
+    if (emailResult.offerLetterHtml) {
+      update['finalDecision.offerLetterHtml'] = emailResult.offerLetterHtml;
+      update['finalDecision.offerLetterSubject'] = emailResult.offerLetterSubject
+        || `Offer — ${app.jobTitle}`;
     }
-    if (!emailResult.candidateEmailSent) {
-      console.error(
-        `[email] Offer/final decision not sent for app ${appId}:`,
-        emailResult.candidateEmailError || 'unknown',
-      );
-    }
-    return { sent: Boolean(emailResult.candidateEmailSent), ...emailResult };
-  }, `final-decision-${appId}`);
+    await JobApplication.updateOne({ id: appId }, { $set: update });
+  }
+
+  if (!emailResult.candidateEmailSent) {
+    console.error(
+      `[email] Offer/final decision not sent for app ${appId}:`,
+      emailResult.candidateEmailError || 'unknown',
+    );
+  }
 
   return {
-    candidateEmailSent: null,
-    email_queued: Boolean(app.candidateEmail),
-    candidateEmailError: null,
-    recipient: app.candidateEmail || null,
-    offerLetterHtml: null,
-    offerLetterSubject: null,
+    candidateEmailSent: emailResult.candidateEmailSent,
+    candidateEmailError: emailResult.candidateEmailError,
+    email_queued: false,
+    recipient: emailResult.recipient,
+    offerLetterHtml: emailResult.offerLetterHtml,
+    offerLetterSubject: emailResult.offerLetterSubject,
   };
 }
 
@@ -403,14 +408,16 @@ async function notifyOfferResponse(app, response, { candidateNote, onboardResult
   if (userId) {
     await notifyUsers([userId], {
       type: accepted ? 'hired' : 'offer_declined',
-      title: accepted ? 'Welcome aboard!' : 'Offer declined recorded',
+      title: accepted ? 'Welcome aboard!' : 'Offer declined',
       message: accepted
         ? `You are now an employee at ${config.orgName}. Check your email for next steps.`
-        : `Your decision to decline the ${app.jobTitle} offer has been recorded.`,
+        : `You declined the offer for ${app.jobTitle}. You can browse other roles in Job Openings.`,
       link: accepted ? '/dashboard' : '/dashboard/job-openings',
     }, io);
   }
 
+  let hrEmailSent = false;
+  let hrEmailError = null;
   if (config.hrEmail) {
     const hrType = accepted ? 'offer_accepted_hr' : 'offer_rejected_hr';
     const hrCtx = {
@@ -422,16 +429,25 @@ async function notifyOfferResponse(app, response, { candidateNote, onboardResult
         ? 'Complete onboarding paperwork and assign manager'
         : 'Consider reopening the role or contacting backup candidates',
     };
-    runEmailInBackground(
-      () => sendAgentGroqEmail(config.hrEmail, hrType, hrCtx),
-      `offer-response-hr-${app.id}`,
-    );
+    try {
+      const result = await sendAgentGroqEmail(config.hrEmail, hrType, hrCtx);
+      hrEmailSent = Boolean(result.sent);
+      hrEmailError = result.sent ? null : (result.reason || 'send_failed');
+      if (!result.sent) {
+        console.error(`[email] Offer response HR mail failed (app ${app.id}):`, hrEmailError);
+      }
+    } catch (err) {
+      hrEmailError = err.message;
+      console.error(`[email] Offer response HR mail error (app ${app.id}):`, err.message);
+    }
+  } else {
+    hrEmailError = 'hr_email_not_configured';
   }
 
   return {
-    hrEmailSent: null,
-    email_queued: Boolean(config.hrEmail),
-    hrEmailError: null,
+    hrEmailSent,
+    hrEmailError,
+    email_queued: false,
     response: accepted ? 'accepted' : 'rejected',
   };
 }

@@ -43,6 +43,7 @@ export default function AttendancePage() {
   const [hrBalances, setHrBalances] = useState<EmployeeLeaveSummary[]>([]);
   const [mySummary, setMySummary] = useState<EmployeeLeaveSummary | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [submittingLeave, setSubmittingLeave] = useState(false);
   const [leaveForm, setLeaveForm] = useState({ type: "sick", from_date: "", to_date: "", reason: "" });
   const isEmployee = user?.role === "employee";
   const isHrView = user?.role === "management_admin" || user?.role === "hr_recruiter" || user?.role === "senior_manager";
@@ -89,21 +90,32 @@ export default function AttendancePage() {
       toast.error("Fill dates and reason");
       return;
     }
+    setSubmittingLeave(true);
     try {
       const { data } = await attendanceAPI.requestLeave({ ...leaveForm, reason });
-      const payload = data as { warning?: string; message?: string; email_sent?: boolean; email_queued?: boolean };
-      if (payload.email_sent === false && !payload.email_queued) {
-        toast.error(payload.message || "Leave saved but HR email not configured");
+      const payload = data as {
+        warning?: string;
+        message?: string;
+        email_sent?: boolean;
+        email_error?: string | null;
+      };
+      if (payload.email_sent === false) {
+        toast.error(
+          payload.message || payload.email_error || "Leave saved but HR was not notified by email",
+          { duration: 8000 },
+        );
       } else if (payload.warning) {
-        toast.success(payload.warning);
+        toast.success(`${payload.message || "Leave submitted"} — ${payload.warning}`, { duration: 8000 });
       } else {
-        toast.success(payload.message || "Leave request submitted");
+        toast.success(payload.message || "Leave request submitted — HR notified");
       }
       setLeaveForm({ type: "sick", from_date: "", to_date: "", reason: "" });
       load();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
       toast.error(msg || "Leave request failed");
+    } finally {
+      setSubmittingLeave(false);
     }
   };
 
@@ -186,7 +198,9 @@ export default function AttendancePage() {
             <input type="date" className="input-field" value={leaveForm.from_date} onChange={(e) => setLeaveForm({ ...leaveForm, from_date: e.target.value })} />
             <input type="date" className="input-field" value={leaveForm.to_date} onChange={(e) => setLeaveForm({ ...leaveForm, to_date: e.target.value })} />
             <RichTextEditor value={leaveForm.reason} onChange={(html) => setLeaveForm({ ...leaveForm, reason: html })} placeholder="Reason" minHeight="80px" />
-            <button onClick={requestLeave} className="btn-primary w-full">Submit Leave Request</button>
+            <button onClick={requestLeave} disabled={submittingLeave} className="btn-primary w-full inline-flex items-center justify-center gap-2">
+              {submittingLeave ? "Submitting…" : "Submit Leave Request"}
+            </button>
           </div>
         </GlassCard>
       </div>

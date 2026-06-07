@@ -9,9 +9,7 @@ function sleep(ms) {
 
 function emailDelivered(result) {
   if (!result) return false;
-  if (result.sent === true || result.candidateEmailSent === true) return true;
-  if (result.sent === false || result.candidateEmailSent === false) return false;
-  return result.sent !== false;
+  return result.sent === true || result.candidateEmailSent === true;
 }
 
 /** Fire-and-forget with automatic retries until sent or max rounds. */
