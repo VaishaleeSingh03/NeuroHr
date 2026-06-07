@@ -112,70 +112,29 @@ router.post('/leave', auth(), async (req, res) => {
   });
 
   const config = require('../config');
-  const { sendNotifyHrEmail } = require('../lib/emailService');
   const { runEmailInBackground } = require('../lib/emailAsync');
-  const { leaveRequestHrNotice } = require('../lib/emailTemplates');
-  const { stripHtml } = require('../lib/emailContext');
+  const { buildLeaveRequestContext } = require('../lib/emailContext');
+  const { sendAgentGroqEmail } = require('../lib/groqEmailService');
   const hrEmail = config.hrEmail;
-  let emailResult = { sent: false, reason: 'no_hr_email_configured' };
-  let leaveMail = null;
 
   if (hrEmail) {
-    try {
-      const leaveSummary = await getEmployeeLeaveSummary(emp);
-      const balanceSummary = Object.entries(leaveSummary.balances || {})
-        .filter(([, v]) => v && v.granted > 0)
-        .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v.remaining}/${v.granted}`)
-        .join(', ');
-      leaveMail = leaveRequestHrNotice({
-        name: emp.personalDetails?.name || 'Employee',
-        employeeId: emp.employeeId || `EMP${emp.id}`,
-        department: emp.department,
-        designation: emp.designation,
-        employmentType: emp.employmentType,
-        email: emp.personalDetails?.email,
-        leaveType: leaveType,
-        fromDate: leave.fromDate,
-        toDate: leave.toDate,
-        days: leave.days,
-        reason: stripHtml(leave.reason || ''),
-        requestId: leave.id,
-        balanceSummary,
-        exceedsBalance: check.exceedsBalance,
-      });
-      emailResult = await sendNotifyHrEmail(hrEmail, leaveMail.subject, leaveMail.html);
-      emailResult.generated_by = 'template';
-      if (!emailResult.sent) {
-        runEmailInBackground(
-          () => sendNotifyHrEmail(hrEmail, leaveMail.subject, leaveMail.html),
-          `leave-${leave.id}`,
-        );
-      }
-    } catch (err) {
-      console.error('[leave] HR notification failed:', err.message);
-      emailResult = { sent: false, reason: err.message };
-      if (leaveMail) {
-        runEmailInBackground(
-          () => sendNotifyHrEmail(hrEmail, leaveMail.subject, leaveMail.html),
-          `leave-${leave.id}`,
-        );
-      }
-    }
+    const leaveSummary = await getEmployeeLeaveSummary(emp);
+    const ctx = buildLeaveRequestContext(emp, leave.toObject(), { leaveSummary, check });
+    runEmailInBackground(
+      () => sendAgentGroqEmail(hrEmail, 'leave_request', ctx),
+      `leave-${leave.id}`,
+    );
   }
 
-  const emailQueued = Boolean(hrEmail && emailResult.sent !== true);
   res.status(201).json({
     ...leave.toObject(),
-    email_sent: emailResult.sent === true,
-    email_queued: emailQueued,
-    email_channel: emailResult.channel || null,
+    email_sent: null,
+    email_queued: Boolean(hrEmail),
     exceedsBalance: check.exceedsBalance,
     warning: check.exceedsBalance ? 'This request exceeds your remaining balance — excess days may be deducted from payroll' : undefined,
-    message: !hrEmail
-      ? 'Leave request submitted — HR email not configured'
-      : emailResult.sent
-        ? 'Leave request submitted — HR notified by email'
-        : 'Leave request submitted — HR notification sending',
+    message: hrEmail
+      ? 'Leave request submitted — HR notification sending'
+      : 'Leave request submitted — HR email not configured',
   });
 });
 

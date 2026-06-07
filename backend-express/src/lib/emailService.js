@@ -8,8 +8,15 @@ let agentTransporter = null;
 let hrSmtpTransporter = null;
 let agentSmtpTransporter = null;
 
-const MAX_ATTEMPTS_PER_CHANNEL = 3;
-const RETRY_DELAY_MS = 900;
+const MAX_ATTEMPTS_PER_CHANNEL = 1;
+const RETRY_DELAY_MS = 350;
+const SMTP_TIMEOUT_MS = 12000;
+
+const TRANSPORT_OPTS = {
+  connectionTimeout: SMTP_TIMEOUT_MS,
+  greetingTimeout: SMTP_TIMEOUT_MS,
+  socketTimeout: SMTP_TIMEOUT_MS,
+};
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -42,7 +49,7 @@ function getHrTransporter() {
   if (hrTransporter) return hrTransporter;
   const oauth = getHrOAuthAuth();
   if (!oauth) return null;
-  hrTransporter = nodemailer.createTransport({ service: 'gmail', auth: oauth });
+  hrTransporter = nodemailer.createTransport({ service: 'gmail', auth: oauth, ...TRANSPORT_OPTS });
   return hrTransporter;
 }
 
@@ -54,6 +61,7 @@ function getHrSmtpPasswordTransporter() {
     port: config.smtpPort,
     secure: config.smtpPort === 465,
     auth: { user: config.smtpUser, pass: config.smtpPassword },
+    ...TRANSPORT_OPTS,
   });
   return hrSmtpTransporter;
 }
@@ -62,7 +70,7 @@ function getAgentTransporter() {
   if (agentTransporter) return agentTransporter;
   const oauth = getAgentOAuthAuth();
   if (oauth) {
-    agentTransporter = nodemailer.createTransport({ service: 'gmail', auth: oauth });
+    agentTransporter = nodemailer.createTransport({ service: 'gmail', auth: oauth, ...TRANSPORT_OPTS });
     return agentTransporter;
   }
   return getAgentSmtpPasswordTransporter();
@@ -76,6 +84,7 @@ function getAgentSmtpPasswordTransporter() {
     port: config.smtpPort,
     secure: config.smtpPort === 465,
     auth: { user: config.agentSmtpUser, pass: config.agentSmtpPassword },
+    ...TRANSPORT_OPTS,
   });
   return agentSmtpTransporter;
 }

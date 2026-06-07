@@ -71,8 +71,8 @@ router.post('/generate', auth(['management_admin', 'hr_recruiter']), async (req,
     });
     const payroll = await savePayrollRecord(employeeId, month, calc);
     const payrollPayload = { ...payroll.toObject(), month };
-    const emailResult = await notifyPayrollEmail(emp, payrollPayload);
-    if (!emailResult.sent) {
+    const recipient = emp.personalDetails?.email || null;
+    if (recipient) {
       runEmailInBackground(
         () => notifyPayrollEmail(emp, payrollPayload),
         `payroll-${emp.id}-${month}`,
@@ -80,17 +80,14 @@ router.post('/generate', auth(['management_admin', 'hr_recruiter']), async (req,
     }
 
     const obj = payroll.toObject();
-    const recipient = emailResult.email_recipient || emp.personalDetails?.email || null;
     res.json({
       ...obj,
-      email_sent: emailResult.sent === true,
-      email_queued: !emailResult.sent && Boolean(recipient),
+      email_sent: null,
+      email_queued: Boolean(recipient),
       email_recipient: recipient,
-      message: emailResult.sent
-        ? `Payslip emailed to ${recipient}`
-        : recipient
-          ? `Payroll saved — payslip email sending to ${recipient}`
-          : 'Payroll saved — employee has no email on file',
+      message: recipient
+        ? `Payroll saved — Groq payslip email sending to ${recipient}`
+        : 'Payroll saved — employee has no email on file',
     });
   } catch (err) {
     console.error('[payroll] generate failed:', err.message);
@@ -118,8 +115,7 @@ router.post('/generate-batch', auth(['management_admin', 'hr_recruiter']), async
       });
       const payroll = await savePayrollRecord(emp.id, month, calc);
       const payrollPayload = { ...payroll.toObject(), month };
-      const emailResult = await notifyPayrollEmail(emp, payrollPayload);
-      if (!emailResult.sent && emp.personalDetails?.email) {
+      if (emp.personalDetails?.email) {
         runEmailInBackground(
           () => notifyPayrollEmail(emp, payrollPayload),
           `payroll-${emp.id}-${month}`,
@@ -130,8 +126,7 @@ router.post('/generate-batch', auth(['management_admin', 'hr_recruiter']), async
         name: emp.personalDetails?.name,
         email: emp.personalDetails?.email,
         netPay: payroll.netPay,
-        email_sent: emailResult.sent === true,
-        email_queued: !emailResult.sent && Boolean(emp.personalDetails?.email),
+        email_queued: Boolean(emp.personalDetails?.email),
       });
     } catch (err) {
       errors.push({ employeeId: emp.id, name: emp.personalDetails?.name, error: err.message });

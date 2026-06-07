@@ -1,7 +1,7 @@
 const { resetTransporters } = require('./emailService');
 
-const BG_MAX_ROUNDS = 5;
-const BG_ROUND_DELAY_MS = 4000;
+const BG_MAX_ROUNDS = 4;
+const BG_ROUND_DELAY_MS = 2500;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

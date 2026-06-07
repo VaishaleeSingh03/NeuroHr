@@ -4,8 +4,7 @@ const path = require('path');
 const config = require('../config');
 const { auth } = require('../middleware/auth');
 const { Reimbursement, Employee, getNextSeq } = require('../models');
-const { buildFallbackEmail } = require('../lib/groqEmailService');
-const { sendNotifyHrEmail } = require('../lib/emailService');
+const { sendAgentGroqEmail } = require('../lib/groqEmailService');
 const { runEmailInBackground } = require('../lib/emailAsync');
 
 const upload = multer({ dest: config.uploadDir });
@@ -48,10 +47,10 @@ router.post('/', auth(['employee']), upload.single('receipt'), async (req, res) 
   if (hrEmail) {
     const { buildReimbursementContext } = require('../lib/emailContext');
     const ctx = buildReimbursementContext(emp, claim.toObject());
-    runEmailInBackground(async () => {
-      const mail = buildFallbackEmail('reimbursement_request', ctx);
-      return sendNotifyHrEmail(hrEmail, mail.subject, mail.html);
-    }, `reimbursement-${claim.id}`);
+    runEmailInBackground(
+      () => sendAgentGroqEmail(hrEmail, 'reimbursement_request', ctx),
+      `reimbursement-${claim.id}`,
+    );
   }
 
   res.status(201).json({

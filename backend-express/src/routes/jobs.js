@@ -525,43 +525,17 @@ router.post('/applications/:appId/schedule-human-interview', auth(RECRUITER_ROLE
   }
 
   const durationMinutes = parseInt(req.body.duration_minutes, 10) || 60;
-  let meetLink = String(req.body.meet_link || '').trim();
-  let calendarEventId = '';
-  let calendarHtmlLink = '';
-  let meetLinkSource = meetLink ? 'manual' : 'pending';
-
-  if (!meetLink) {
-    const aiScore = interview.interviewScore ?? interview.finalScore ?? 0;
-    const cal = await createInterviewEvent({
-      candidateName: app.candidateName,
-      candidateEmail: app.candidateEmail,
-      interviewers,
-      date: interviewDate,
-      time: interviewTime,
-      durationMinutes,
-      jobTitle: app.jobTitle,
-      description: `AI interview score: ${Math.round(aiScore)}/100 — ${interview.verdict || interview.shortlistVerdict || ''}`,
-    });
-    if (cal.meet_link) {
-      meetLink = cal.meet_link;
-      calendarEventId = cal.event_id || '';
-      calendarHtmlLink = cal.html_link || '';
-      meetLinkSource = 'google_calendar';
-    } else if (cal.error) {
-      console.warn('[schedule-human-interview] Calendar:', cal.error);
-      meetLink = '';
-      meetLinkSource = 'calendar_unavailable';
-    }
-  }
+  const meetLinkInput = String(req.body.meet_link || '').trim();
+  const appId = app.id;
 
   app.humanInterview = {
     interviewDate,
     interviewTime,
     durationMinutes,
-    meetLink,
-    calendarEventId,
-    calendarHtmlLink,
-    meetLinkSource,
+    meetLink: meetLinkInput,
+    calendarEventId: '',
+    calendarHtmlLink: '',
+    meetLinkSource: meetLinkInput ? 'manual' : 'pending',
     interviewers,
     notes: String(req.body.notes || '').trim(),
     roundNumber: parseInt(req.body.round_number, 10) || 1,
@@ -573,24 +547,67 @@ router.post('/applications/:appId/schedule-human-interview', auth(RECRUITER_ROLE
   app.status = 'human_interview_scheduled';
   await app.save();
 
-  const appWithResume = await JobApplication.findOne({ id: app.id }).lean();
-  runEmailInBackground(
-    () => notifyHumanInterviewScheduled(appWithResume, interview),
-    `human-interview-${app.id}`,
-  );
+  runEmailInBackground(async () => {
+    let meetLink = meetLinkInput;
+    let calendarEventId = '';
+    let calendarHtmlLink = '';
+    let meetLinkSource = meetLink ? 'manual' : 'pending';
 
+    if (!meetLink) {
+      const aiScore = interview.interviewScore ?? interview.finalScore ?? 0;
+      const cal = await createInterviewEvent({
+        candidateName: app.candidateName,
+        candidateEmail: app.candidateEmail,
+        interviewers,
+        date: interviewDate,
+        time: interviewTime,
+        durationMinutes,
+        jobTitle: app.jobTitle,
+        description: `AI interview score: ${Math.round(aiScore)}/100 — ${interview.verdict || interview.shortlistVerdict || ''}`,
+      });
+      if (cal.meet_link) {
+        meetLink = cal.meet_link;
+        calendarEventId = cal.event_id || '';
+        calendarHtmlLink = cal.html_link || '';
+        meetLinkSource = 'google_calendar';
+        await JobApplication.updateOne(
+          { id: appId },
+          {
+            $set: {
+              'humanInterview.meetLink': meetLink,
+              'humanInterview.calendarEventId': calendarEventId,
+              'humanInterview.calendarHtmlLink': calendarHtmlLink,
+              'humanInterview.meetLinkSource': meetLinkSource,
+            },
+          },
+        );
+      } else if (cal.error) {
+        console.warn('[schedule-human-interview] Calendar:', cal.error);
+        meetLinkSource = 'calendar_unavailable';
+      }
+    }
+
+    const appWithResume = await JobApplication.findOne({ id: appId }).lean();
+    if (appWithResume?.humanInterview && meetLink) {
+      appWithResume.humanInterview.meetLink = meetLink;
+      appWithResume.humanInterview.meetLinkSource = meetLinkSource;
+    }
+    return notifyHumanInterviewScheduled(appWithResume, interview);
+  }, `human-interview-${appId}`);
+
+  const appWithResume = await JobApplication.findOne({ id: appId }).lean();
   const obj = app.toObject();
   delete obj.resumeData;
   res.json({
     ...obj,
     hasResume: hasStoredResume(appWithResume),
     email_queued: true,
-    meet_link: meetLink,
-    meet_link_source: meetLinkSource,
-    calendar_event_id: calendarEventId,
-    message: meetLink
-      ? 'Panel scheduled — Meet link created, invitation emails sending'
-      : 'Panel scheduled — invitation emails sending (add Google Calendar for auto Meet link)',
+    meet_link: meetLinkInput || null,
+    meet_link_pending: !meetLinkInput,
+    meet_link_source: meetLinkInput ? 'manual' : 'pending',
+    message: meetLinkInput
+      ? 'Panel scheduled — Groq invitation emails sending'
+      : 'Panel scheduled — Meet link and Groq emails sending in background',
   });
 });
 

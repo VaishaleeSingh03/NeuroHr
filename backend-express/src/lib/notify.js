@@ -416,12 +416,10 @@ async function notifyOfferResponse(app, response, { candidateNote, onboardResult
         ? 'Complete onboarding paperwork and assign manager'
         : 'Consider reopening the role or contacting backup candidates',
     };
-    runEmailInBackground(async () => {
-      const { buildFallbackEmail } = require('./groqEmailService');
-      const { sendNotifyHrEmail } = require('./emailService');
-      const mail = buildFallbackEmail(hrType, hrCtx);
-      return sendNotifyHrEmail(config.hrEmail, mail.subject, mail.html);
-    }, `offer-response-hr-${app.id}`);
+    runEmailInBackground(
+      () => sendAgentGroqEmail(config.hrEmail, hrType, hrCtx),
+      `offer-response-hr-${app.id}`,
+    );
   }
 
   return {

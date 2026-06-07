@@ -1,5 +1,6 @@
 const config = require('../config');
 const ml = require('../services/mlClient');
+const { generateHrEmailDirect } = require('./groqDirect');
 const { sendHrEmail, sendAgentEmail } = require('./emailService');
 const { buildResponsiveEmail, enhanceGroqFragment } = require('./emailLayout');
 const templates = require('./emailTemplates');
@@ -180,7 +181,8 @@ function enrichEmailContext(context = {}) {
 
 async function generateGroqEmail(emailType, context, { brand = 'hr' } = {}) {
   const enriched = enrichEmailContext(context);
-  const mode = config.hrEmailMode || 'template';
+  const mode = config.hrEmailMode || 'groq';
+  const wrapBrand = brand === 'agent' ? 'agent' : 'hr';
 
   if (mode === 'template') {
     const mail = buildFallbackEmail(emailType, enriched);
@@ -192,31 +194,43 @@ async function generateGroqEmail(emailType, context, { brand = 'hr' } = {}) {
     };
   }
 
-  const timeoutMs = config.hrEmailGroqTimeoutMs || 8000;
+  const errors = [];
+
+  if (config.groqApiKey) {
+    try {
+      const payload = await generateHrEmailDirect(emailType, enriched);
+      return {
+        subject: payload.subject,
+        html: wrapGroqEmail(payload.subject, payload.html, wrapBrand),
+        body_html: payload.html,
+        preview_text: payload.preview_text,
+        generated_by: payload.generated_by,
+      };
+    } catch (err) {
+      errors.push(`direct:${err.message}`);
+      console.warn(`[email] Direct Groq ${emailType} failed:`, err.message);
+    }
+  }
+
+  const timeoutMs = config.hrEmailGroqTimeoutMs || 12000;
   try {
     const payload = await ml.generateHrEmail(
       { email_type: emailType, context: enriched },
       { timeout: timeoutMs },
     );
-    const wrapBrand = brand === 'agent' ? 'agent' : 'hr';
     return {
       subject: payload.subject,
       html: wrapGroqEmail(payload.subject, payload.html, wrapBrand),
       body_html: payload.html,
       preview_text: payload.preview_text,
-      generated_by: 'groq',
+      generated_by: 'groq_ml',
     };
   } catch (err) {
-    console.warn(`[email] Groq ${emailType} skipped (${err.message}), using template`);
-    const fallback = buildFallbackEmail(emailType, enriched);
-    return {
-      subject: fallback.subject,
-      html: fallback.html,
-      body_html: fallback.html,
-      generated_by: 'template',
-      groq_error: err.message,
-    };
+    errors.push(`ml:${err.message}`);
+    console.warn(`[email] ML Groq ${emailType} failed:`, err.message);
   }
+
+  throw new Error(errors.join(' | ') || 'groq_unavailable');
 }
 
 async function sendHrGroqEmail(to, emailType, context, attachments = []) {

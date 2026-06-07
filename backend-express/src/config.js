@@ -31,7 +31,12 @@ module.exports = {
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
   uploadDir: process.env.UPLOAD_DIR || './uploads',
   maxUploadMb: parseInt(process.env.MAX_UPLOAD_SIZE_MB || '50', 10),
-  /** template = instant branded mail (default on deploy); groq = ML+Groq with timeout fallback */
-  hrEmailMode: (process.env.HR_EMAIL_MODE || 'template').toLowerCase(),
-  hrEmailGroqTimeoutMs: parseInt(process.env.HR_EMAIL_GROQ_TIMEOUT_MS || '8000', 10),
+  groqApiKey: process.env.GROQ_API_KEY || '',
+  groqModel: process.env.GROQ_MODEL || 'llama-3.3-70b-versatile',
+  groqModelFast: process.env.GROQ_MODEL_FAST || 'llama-3.1-8b-instant',
+  groqModelStrong: process.env.GROQ_MODEL_STRONG || process.env.GROQ_MODEL_FAST || 'llama-3.1-8b-instant',
+  groqRequestTokenBudget: parseInt(process.env.GROQ_REQUEST_TOKEN_BUDGET || '5500', 10),
+  /** groq = direct Groq API (fast); template = instant branded templates */
+  hrEmailMode: (process.env.HR_EMAIL_MODE || 'groq').toLowerCase(),
+  hrEmailGroqTimeoutMs: parseInt(process.env.HR_EMAIL_GROQ_TIMEOUT_MS || '12000', 10),
 };

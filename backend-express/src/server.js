@@ -84,7 +84,16 @@ async function start() {
   }
   server.listen(config.port, () => {
     console.log(`NeuroHR AI API running on http://localhost:${config.port}`);
+    wakeMlService();
   });
+}
+
+/** Reduce Render cold-start delay for screening/JD/interview analysis. */
+function wakeMlService() {
+  const url = `${config.mlServiceUrl.replace(/\/$/, '')}/health`;
+  require('axios').get(url, { timeout: 8000 })
+    .then(() => console.log('[ml] Warm-up ping OK'))
+    .catch((err) => console.warn('[ml] Warm-up ping failed:', err.message));
 }
 
 start().catch((err) => {
