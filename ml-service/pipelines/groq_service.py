@@ -35,27 +35,16 @@ def is_groq_available() -> bool:
     return bool(settings.groq_api_key) and _get_client() is not None
 
 
-def _gemini_fallback_enabled() -> bool:
-    try:
-        from pipelines.gemini_service import is_gemini_available
-        return is_gemini_available()
-    except Exception:
-        return False
-
-
 def require_groq() -> None:
-    if is_groq_available():
-        return
-    if _gemini_fallback_enabled():
-        return
-    if settings.groq_api_key and _get_client() is None:
+    if not settings.groq_api_key:
         raise GroqNotConfiguredError(
-            "Groq client failed to initialize. Check GROQ_API_KEY or set GEMINI_API_KEY as fallback."
+            "GROQ_API_KEY is required for JD generation. "
+            "Set GROQ_API_KEY in the project root .env and restart ml-service."
         )
-    raise GroqNotConfiguredError(
-        "GROQ_API_KEY or GEMINI_API_KEY is required. "
-        "Set at least one in the project root .env and restart ml-service."
-    )
+    if _get_client() is None:
+        raise GroqNotConfiguredError(
+            "Groq client failed to initialize. Check GROQ_API_KEY and restart ml-service."
+        )
 
 
 def last_groq_error() -> str | None:
@@ -66,16 +55,16 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text or "") // 4)
 
 
-def _cap_max_tokens(system: str, user: str, max_tokens: int, *, min_floor: int = 256) -> int:
+def _cap_max_tokens(system: str, user: str, max_tokens: int) -> int:
     """Keep input + max_tokens under Groq on-demand TPM/request limits (~6000)."""
     budget = getattr(settings, "groq_request_token_budget", None) or 5500
     input_est = _estimate_tokens(system) + _estimate_tokens(user) + 80
     available = budget - input_est
-    capped = min(max_tokens, max(min_floor, available))
+    capped = min(max_tokens, max(256, available))
     if capped < max_tokens:
         logger.info(
-            "Capped Groq max_tokens %s -> %s (est. input %s, budget %s, floor %s)",
-            max_tokens, capped, input_est, budget, min_floor,
+            "Capped Groq max_tokens %s -> %s (est. input %s, budget %s)",
+            max_tokens, capped, input_est, budget,
         )
     return capped
 
@@ -114,60 +103,37 @@ def groq_chat(
     *,
     strict: bool = False,
     json_mode: bool = False,
-    groq_only: bool = False,
-    min_output_tokens: int = 256,
 ) -> str | None:
     global _last_groq_error
     client = _get_client()
-    if client:
-        safe_max = _cap_max_tokens(system, user, max_tokens, min_floor=min_output_tokens)
-        kwargs = {
-            "model": model or settings.groq_model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
-            "temperature": temperature,
-            "max_tokens": safe_max,
-        }
-        if json_mode:
-            kwargs["response_format"] = {"type": "json_object"}
-        try:
-            response = client.chat.completions.create(**kwargs)
-            _last_groq_error = None
-            return response.choices[0].message.content
-        except Exception as exc:
-            _last_groq_error = str(exc)
-            logger.warning(
-                "Groq chat failed (%s, json_mode=%s): %s",
-                model or settings.groq_model,
-                json_mode,
-                exc,
-            )
-    else:
-        _last_groq_error = "Groq client is not configured."
-
-    if _gemini_fallback_enabled() and not groq_only:
-        try:
-            from pipelines.gemini_service import gemini_chat
-            text = gemini_chat(
-                system,
-                user,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                json_mode=json_mode,
-                strict=False,
-            )
-            if text:
-                logger.info("Groq chat unavailable/failed — using Gemini fallback")
-                _last_groq_error = None
-                return text
-        except Exception as exc:
-            logger.warning("Gemini chat fallback failed: %s", exc)
-
-    if strict:
-        raise GroqApiError(_last_groq_error or "Groq API error")
-    return None
+    if not client:
+        msg = "Groq client is not configured."
+        _last_groq_error = msg
+        if strict:
+            raise GroqApiError(msg)
+        return None
+    safe_max = _cap_max_tokens(system, user, max_tokens)
+    kwargs = {
+        "model": model or settings.groq_model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": temperature,
+        "max_tokens": safe_max,
+    }
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+    try:
+        response = client.chat.completions.create(**kwargs)
+        _last_groq_error = None
+        return response.choices[0].message.content
+    except Exception as exc:
+        _last_groq_error = str(exc)
+        logger.warning("Groq chat failed (%s, json_mode=%s): %s", model or settings.groq_model, json_mode, exc)
+        if strict:
+            raise GroqApiError(f"Groq API error: {exc}") from exc
+        return None
 
 
 def groq_strong(system: str, user: str, temperature: float = 0.4, *, strict: bool = False) -> str | None:
@@ -183,8 +149,6 @@ def groq_json(
     model: str | None = None,
     strict: bool = False,
     max_tokens: int = 1536,
-    groq_only: bool = False,
-    min_output_tokens: int = 256,
 ) -> dict | list | None:
     """
     Groq-only JSON helper with retries.
@@ -220,8 +184,6 @@ def groq_json(
             max_tokens=max_tokens,
             strict=False,
             json_mode=use_json_mode,
-            groq_only=groq_only,
-            min_output_tokens=min_output_tokens,
         )
         if not text or not str(text).strip():
             errors.append(f"{attempt_model}(json={use_json_mode}):empty")
@@ -240,122 +202,8 @@ def groq_json(
             errors.append(f"{attempt_model}(json={use_json_mode}):{exc}: {snippet!r}")
             continue
 
-    if _gemini_fallback_enabled() and not groq_only:
-        try:
-            from pipelines.gemini_service import gemini_json
-            result = gemini_json(json_system, user, strict=False, max_tokens=max_tokens)
-            if result is not None:
-                logger.info("Groq JSON failed after %s attempts — using Gemini fallback", len(attempts))
-                return result
-            errors.append("gemini:empty")
-        except Exception as exc:
-            errors.append(f"gemini:{exc}")
-            logger.warning("Gemini JSON fallback failed: %s", exc)
-
     msg = f"Groq JSON failed after {len(attempts)} attempts: {' | '.join(errors)}"
     logger.error(msg)
     if strict:
         raise GroqApiError(msg)
     return None
-
-
-def groq_screening_json(system: str, user: str, *, strict: bool = True) -> dict:
-    """Groq-only resume screening — strong model first, no Gemini, generous JSON output cap."""
-    return _groq_task_json(
-        system, user, task="screening", max_tokens=2048, min_output=1024,
-        fast_first=False, strict=strict,
-    )
-
-
-def _groq_task_json(
-    system: str,
-    user: str,
-    *,
-    task: str,
-    max_tokens: int,
-    min_output: int,
-    fast_first: bool,
-    strict: bool = True,
-) -> dict:
-    require_groq()
-    strong = getattr(settings, "groq_model_strong", None) or settings.groq_model
-    fast = getattr(settings, "groq_model_fast", None) or settings.groq_model
-    order = [fast, strong] if fast_first else [strong, fast]
-    models = list(dict.fromkeys([m for m in order if m]))
-
-    errors: list[str] = []
-    for model in models:
-        result = groq_json(
-            system,
-            user,
-            model=model,
-            strict=False,
-            max_tokens=max_tokens,
-            groq_only=True,
-            min_output_tokens=min_output,
-        )
-        if isinstance(result, dict):
-            logger.info("Groq %s succeeded via model=%s", task, model)
-            return result
-        errors.append(model)
-
-    detail = last_groq_error() or "unknown"
-    msg = f"Groq {task} failed ({', '.join(errors)}): {detail}"
-    if strict:
-        raise GroqApiError(msg)
-    raise GroqApiError(msg)
-
-
-def groq_interview_json(
-    system: str,
-    user: str,
-    *,
-    strict: bool = True,
-    max_tokens: int = 2048,
-) -> dict:
-    """Groq-only interview JSON — strong model first, no Gemini."""
-    return _groq_task_json(
-        system, user, task="interview", max_tokens=max_tokens, min_output=768,
-        fast_first=False, strict=strict,
-    )
-
-
-def groq_email_json(
-    system: str,
-    user: str,
-    *,
-    strict: bool = True,
-    max_tokens: int = 2048,
-) -> dict:
-    """Groq-only HR email JSON — fast model first for speed, strong fallback."""
-    return _groq_task_json(
-        system, user, task="email", max_tokens=max_tokens, min_output=512,
-        fast_first=True, strict=strict,
-    )
-
-
-def groq_interview_text(system: str, user: str, *, strict: bool = True) -> str:
-    """Groq-only long-form interview content (briefings)."""
-    require_groq()
-    strong = getattr(settings, "groq_model_strong", None) or settings.groq_model
-    fast = getattr(settings, "groq_model_fast", None) or settings.groq_model
-    for model in dict.fromkeys([m for m in (strong, fast) if m]):
-        text = groq_chat(
-            system,
-            user,
-            temperature=0.4,
-            model=model,
-            max_tokens=2048,
-            strict=False,
-            groq_only=True,
-            min_output_tokens=1024,
-        )
-        if text and str(text).strip():
-            logger.info("Groq interview text succeeded via model=%s", model)
-            return str(text).strip()
-
-    detail = last_groq_error() or "unknown"
-    msg = f"Groq interview text failed: {detail}"
-    if strict:
-        raise GroqApiError(msg)
-    raise GroqApiError(msg)

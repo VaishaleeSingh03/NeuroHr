@@ -7,7 +7,7 @@ export function formatApplicationStatus(status: string): string {
   if (s === "hired") return "Hired";
   if (s === "offer_pending") return "Offer pending";
   if (s === "offer_declined") return "Offer declined";
-  if (s === "screening") return "AI screening";
+  if (s === "human_interview_completed") return "Panel complete";
   return s.replace(/_/g, " ");
 }
 

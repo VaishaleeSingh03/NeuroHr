@@ -1,25 +1,11 @@
-"""Shared LLM JSON calls — Groq fast/strong + optional Gemini Flash fallback."""
+"""Shared LLM JSON calls — Groq only (no OpenAI fallback for screening)."""
 
-from pipelines.groq_service import GroqApiError
-from pipelines.llm_provider import llm_json, require_llm
+from pipelines.groq_service import require_groq, groq_json, GroqApiError
 
 
-def call_llm_json(
-    system: str,
-    user: str,
-    *,
-    strict: bool = True,
-    prefer_fast: bool = True,
-    max_tokens: int = 1536,
-) -> dict:
-    require_llm()
-    result = llm_json(
-        system,
-        user,
-        strict=strict,
-        prefer_fast=prefer_fast,
-        max_tokens=max_tokens,
-    )
+def call_llm_json(system: str, user: str, *, strict: bool = True) -> dict:
+    require_groq()
+    result = groq_json(system, user, strict=strict)
     if not isinstance(result, dict):
-        raise GroqApiError("LLM returned invalid JSON for screening.")
+        raise GroqApiError("Groq returned invalid JSON for screening.")
     return result

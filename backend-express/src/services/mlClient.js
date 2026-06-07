@@ -59,29 +59,6 @@ async function screenResume(parsed, jobContext = {}, { timeout } = {}) {
   }
 }
 
-async function parseAndScreenResume(filePath, filename, jobContext = {}, { timeout } = {}) {
-  const form = new FormData();
-  form.append('file', fs.createReadStream(filePath), filename);
-  form.append('job_context', JSON.stringify(jobContext));
-  try {
-    const { data } = await client.post('/api/resume/apply-process', form, {
-      headers: form.getHeaders(),
-      timeout: timeout || 240000,
-    });
-    return data;
-  } catch (err) {
-    throw wrapMlError(err, 'Resume parse and screening failed');
-  }
-}
-
-async function wakeHealth() {
-  try {
-    await client.get('/health', { timeout: 15000 });
-  } catch {
-    // best-effort warm-up
-  }
-}
-
 async function analyzeJD(description, company = '') {
   try {
     const { data } = await client.post('/api/jd/analyze', { description, company });
@@ -124,15 +101,13 @@ async function generateQuestions(jobTitle, skills, count = 5, jobDescription = '
     skills,
     count,
     job_description: jobDescription,
-  }, { timeout: 90000 });
+  });
   return data;
 }
 
 async function generateTailoredQuestions(payload) {
   try {
-    const { data } = await client.post('/api/interview/generate-tailored-questions', payload, {
-      timeout: 120000,
-    });
+    const { data } = await client.post('/api/interview/generate-tailored-questions', payload);
     return data;
   } catch (err) {
     throw wrapMlError(err, 'Groq interview question generation failed');
@@ -140,9 +115,7 @@ async function generateTailoredQuestions(payload) {
 }
 
 async function analyzeAnswer(question, answer, jobContext) {
-  const { data } = await client.post('/api/interview/analyze-answer', {
-    question, answer, job_context: jobContext,
-  }, { timeout: 60000 });
+  const { data } = await client.post('/api/interview/analyze-answer', { question, answer, job_context: jobContext });
   return data;
 }
 
@@ -152,7 +125,7 @@ async function analyzeVideo(imageBase64) {
 }
 
 async function analyzeFullInterview(payload) {
-  const { data } = await client.post('/api/interview/analyze-full', payload, { timeout: 180000 });
+  const { data } = await client.post('/api/interview/analyze-full', payload);
   return data;
 }
 
@@ -238,7 +211,7 @@ async function calculatePayroll(payload) {
 async function generateHrEmail(payload, { timeout } = {}) {
   try {
     const { data } = await client.post('/api/hr/generate-email', payload, {
-      timeout: timeout || 30000,
+      timeout: timeout || 120000,
     });
     return data;
   } catch (err) {
@@ -247,7 +220,7 @@ async function generateHrEmail(payload, { timeout } = {}) {
 }
 
 module.exports = {
-  parseResume, screenResume, parseAndScreenResume, wakeHealth, analyzeJD, generateJDFromKB, kbStatus,
+  parseResume, screenResume, analyzeJD, generateJDFromKB, kbStatus,
   generateQuestions, generateTailoredQuestions, analyzeAnswer, analyzeVideo, analyzeFullInterview,
   generateInterviewerBriefing,
   trainModel, predict, chat, generateOnboarding, analyzeDocument,

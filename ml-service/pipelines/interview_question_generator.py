@@ -8,7 +8,7 @@ import logging
 
 
 
-from pipelines.groq_service import GroqApiError, groq_interview_json, require_groq
+from pipelines.groq_service import GroqApiError, groq_json, require_groq
 
 
 
@@ -148,7 +148,7 @@ Nice-to-have skills: {nice_to_have}
 
 Job description:
 
-{(job_description or "")[:2000]}
+{(job_description or "")[:3500]}
 
 
 
@@ -160,7 +160,7 @@ Resume screening score: {screening_score}/100
 
 Resume text excerpt:
 
-{resume_text[:1200] if resume_text else "(see structured fields below)"}
+{resume_text[:3000] if resume_text else "(see structured fields below)"}
 
 
 
@@ -252,10 +252,14 @@ Rules:
 
 
 
-    result = groq_interview_json(
+    result = groq_json(
+
         "You generate tailored voice interview questions from a candidate resume and job description.",
+
         prompt,
-        max_tokens=2048,
+
+        strict=True,
+
     )
 
 

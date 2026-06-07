@@ -15,8 +15,10 @@ except ImportError:
     Document = None
 
 from pipelines.preprocessing import extract_skills_from_text, preprocess_pipeline
-from pipelines.groq_service import GroqApiError
-from pipelines.llm_provider import is_llm_available, llm_json
+from config import get_settings
+from pipelines.groq_service import GroqApiError, is_groq_available, groq_json
+
+_settings = get_settings()
 
 
 class ResumeParseError(Exception):
@@ -411,12 +413,11 @@ def extract_projects(text: str) -> list[dict]:
 
 
 def _llm_extract_email(raw_text: str) -> str | None:
-    if not is_llm_available() or len(raw_text) < 40:
+    if not is_groq_available() or len(raw_text) < 40:
         return None
-    result = llm_json(
+    result = groq_json(
         "Extract email from resume. JSON: {\"email\": string|null}. Never invent.",
         f"Find email only.\n\n{raw_text[:2000]}",
-        prefer_fast=True,
         max_tokens=128,
     )
     if isinstance(result, dict):
@@ -425,11 +426,9 @@ def _llm_extract_email(raw_text: str) -> str | None:
 
 
 def _llm_parse_resume(raw_text: str) -> dict:
-    if not is_llm_available() or len(raw_text) < 80:
-        raise ResumeParseError(
-            "GROQ_API_KEY or GEMINI_API_KEY is required for resume parsing."
-        )
-    result = llm_json(
+    if not is_groq_available() or len(raw_text) < 80:
+        raise ResumeParseError("GROQ_API_KEY is required for resume parsing.")
+    result = groq_json(
         (
             "Resume parser. Output compact JSON with keys: "
             "name, email, phone, skills (string[] max 20), "
@@ -442,7 +441,7 @@ def _llm_parse_resume(raw_text: str) -> dict:
             "Extract structured fields only. Do NOT dump the full resume into any field.\n\n"
             f"{raw_text[:2800]}"
         ),
-        prefer_fast=True,
+        model=_settings.groq_model_strong,
         strict=True,
         max_tokens=1200,
     )
