@@ -346,6 +346,41 @@ function offerDeclinedHr({
   };
 }
 
+function offerSentHr({
+  candidateName, candidateEmail, jobTitle, salary, startDate, emailSent,
+}) {
+  return {
+    subject: `Offer sent — ${candidateName} (${jobTitle})`,
+    html: wrapAgentHtml('Offer Sent', `
+      <p>Offer letter sent to <strong>${candidateName}</strong> — awaiting portal response.</p>
+      ${emailInfoCard(`
+        <p style="margin:4px 0"><strong>Candidate email:</strong> ${candidateEmail || '—'}</p>
+        <p style="margin:4px 0"><strong>Role:</strong> ${jobTitle || '—'}</p>
+        ${salary ? `<p style="margin:4px 0"><strong>Compensation:</strong> ${salary}</p>` : ''}
+        ${startDate ? `<p style="margin:4px 0"><strong>Start date:</strong> ${startDate}</p>` : ''}
+        <p style="margin:4px 0"><strong>Email sent:</strong> ${emailSent ?? 'Yes'}</p>
+      `)}
+      <p>Onboarding begins only after the candidate accepts in the portal.</p>
+      ${btn(`${config.appUrl}/dashboard/applications`, 'Open Applications')}
+    `),
+  };
+}
+
+function finalRejectedHrNotice({
+  candidateName, jobTitle, screeningScore, emailSent,
+}) {
+  return {
+    subject: `Final rejection recorded — ${candidateName}`,
+    html: wrapAgentHtml('Final Rejection Recorded', `
+      <p>Final rejection recorded for <strong>${candidateName}</strong>.</p>
+      <p><strong>Role:</strong> ${jobTitle || '—'}</p>
+      ${screeningScore != null ? `<p><strong>Screening score:</strong> ${screeningScore}/100</p>` : ''}
+      <p><strong>Candidate email sent:</strong> ${emailSent ? 'Yes' : 'Failed — check SMTP logs'}</p>
+      ${btn(`${config.appUrl}/dashboard/applications`, 'Open Applications')}
+    `),
+  };
+}
+
 function reimbursementRequest({
   name, employeeId, department, designation, category, amount, description, claimId,
 }) {
@@ -382,5 +417,7 @@ module.exports = {
   recruiterMessage,
   offerAcceptedHr,
   offerDeclinedHr,
+  offerSentHr,
+  finalRejectedHrNotice,
   reimbursementRequest,
 };

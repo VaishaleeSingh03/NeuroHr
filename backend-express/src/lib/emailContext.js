@@ -55,7 +55,7 @@ async function buildCandidateOfferContext(app, { onboardResult } = {}) {
   const job = await Job.findOne({ id: app.jobId }).lean();
   const fd = app.finalDecision || {};
   const empType = job?.employmentType || 'full_time';
-  const jdText = stripHtml(job?.description || '').slice(0, 3500);
+  const jdText = stripHtml(job?.description || '').slice(0, 1200);
   const skills = job?.requiredSkills || job?.skills || app.matchedSkills || [];
 
   const ctx = {

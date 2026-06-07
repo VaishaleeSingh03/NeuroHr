@@ -127,6 +127,37 @@ function buildFallbackEmail(emailType, context = {}) {
         respondedAt: c.responded_at,
         actionRequired: c.action_required,
       });
+    case 'offer_sent_hr':
+      return templates.offerSentHr({
+        candidateName: c.candidate_name,
+        candidateEmail: c.candidate_email,
+        jobTitle: c.job_title,
+        salary: c.salary,
+        startDate: c.start_date,
+        emailSent: c.email_sent,
+      });
+    case 'final_rejected_hr':
+      return templates.finalRejectedHrNotice({
+        candidateName: c.candidate_name,
+        jobTitle: c.job_title,
+        screeningScore: parseScore(c.screening_score),
+        emailSent: c.email_sent,
+      });
+    case 'payslip':
+      return templates.payrollPayslip({
+        name: c.employee_name || c.candidate_name || 'Employee',
+        employeeId: c.employee_id,
+        designation: c.designation,
+        department: c.department,
+        month: c.month,
+        basic: c.basic,
+        allowance: c.allowance,
+        bonus: c.bonus,
+        deductions: c.deductions,
+        tax: c.tax,
+        netPay: c.net_pay,
+        currency: c.currency || 'INR',
+      });
     case 'reimbursement_request':
       return templates.reimbursementRequest({
         name: c.employee_name,

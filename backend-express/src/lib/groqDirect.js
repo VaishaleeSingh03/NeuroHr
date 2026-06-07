@@ -46,10 +46,10 @@ function estimateTokens(text = '') {
   return Math.max(1, Math.floor(String(text).length / 4));
 }
 
-function capMaxTokens(system, user, maxTokens) {
-  const budget = config.groqRequestTokenBudget || 5500;
-  const available = budget - estimateTokens(system) - estimateTokens(user) - 80;
-  return Math.min(maxTokens, Math.max(256, available));
+function capMaxTokens(system, user, maxTokens, { minOutput = 256, budget } = {}) {
+  const capBudget = budget || config.groqRequestTokenBudget || 5500;
+  const available = capBudget - estimateTokens(system) - estimateTokens(user) - 80;
+  return Math.min(maxTokens, Math.max(minOutput, available));
 }
 
 function extractJson(text) {
@@ -79,35 +79,78 @@ function extractJson(text) {
   return null;
 }
 
-async function groqJson(system, user, { maxTokens = 2048, model, timeoutMs } = {}) {
+const LARGE_CONTEXT_KEYS = [
+  'job_description', 'briefing_html', 'hr_message', 'message', 'candidate_note',
+  'recommendation', 'strengths', 'concerns',
+];
+
+function compactEmailContext(context = {}) {
+  const c = { ...context };
+  for (const key of LARGE_CONTEXT_KEYS) {
+    if (c[key]) c[key] = String(c[key]).slice(0, 1200);
+  }
+  return c;
+}
+
+async function groqJsonAttempt(system, user, { maxTokens, model, timeoutMs, jsonMode, minOutput, budget }) {
+  const capped = capMaxTokens(system, user, maxTokens, { minOutput, budget });
+  const body = {
+    model: model || config.groqModelFast || 'llama-3.1-8b-instant',
+    messages: [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    temperature: 0.35,
+    max_tokens: capped,
+  };
+  if (jsonMode) body.response_format = { type: 'json_object' };
+  const { data } = await axios.post(GROQ_URL, body, {
+    headers: {
+      Authorization: `Bearer ${config.groqApiKey}`,
+      'Content-Type': 'application/json',
+    },
+    timeout: timeoutMs || EMAIL_TIMEOUT_MS,
+  });
+  const content = data?.choices?.[0]?.message?.content;
+  const parsed = extractJson(content);
+  if (!parsed) throw new Error('empty or non-JSON');
+  return parsed;
+}
+
+async function groqJson(system, user, {
+  maxTokens = 2048,
+  model,
+  timeoutMs,
+  minOutput = 1024,
+  budget = 8000,
+} = {}) {
   if (!config.groqApiKey) {
     throw new Error('GROQ_API_KEY not configured');
   }
-  const capped = capMaxTokens(system, user, maxTokens);
-  const { data } = await axios.post(
-    GROQ_URL,
-    {
-      model: model || config.groqModelFast || 'llama-3.1-8b-instant',
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      temperature: 0.35,
-      response_format: { type: 'json_object' },
-      max_tokens: capped,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${config.groqApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      timeout: timeoutMs || EMAIL_TIMEOUT_MS,
-    },
-  );
-  const content = data?.choices?.[0]?.message?.content;
-  const parsed = extractJson(content);
-  if (!parsed) throw new Error('Groq returned non-JSON email payload');
-  return parsed;
+  const models = [...new Set([
+    model,
+    config.groqModelStrong,
+    config.groqModel,
+    config.groqModelFast,
+  ].filter(Boolean))];
+  const errors = [];
+  for (const attemptModel of models) {
+    for (const jsonMode of [true, false]) {
+      try {
+        return await groqJsonAttempt(system, user, {
+          maxTokens,
+          model: attemptModel,
+          timeoutMs,
+          jsonMode,
+          minOutput,
+          budget,
+        });
+      } catch (err) {
+        errors.push(`${attemptModel}(json=${jsonMode}):${err.message}`);
+      }
+    }
+  }
+  throw new Error(`Groq JSON failed: ${errors.join(' | ')}`);
 }
 
 function geminiUrl() {
@@ -160,13 +203,15 @@ async function llmJson(system, user, opts = {}) {
 async function generateHrEmailDirect(emailType, context = {}) {
   const instruction = EMAIL_INSTRUCTIONS[emailType]
     || 'Write a professional HR email with a details table.';
-  const ctx = JSON.stringify(context).slice(0, 7000);
+  const compact = compactEmailContext(context);
+  const ctx = JSON.stringify(compact).slice(0, 4500);
   const prompt = (
     `Email type: ${emailType}\n`
-    + `Organization: ${context.org_name || config.orgName}\n`
+    + `Organization: ${compact.org_name || config.orgName}\n`
     + `Context JSON:\n${ctx}\n\n`
     + `${instruction}\n${EMAIL_STYLES}\n${DETAILS_TABLE}\n\n`
-    + 'Return JSON: subject (string), html (string fragment), preview_text (string).'
+    + 'Return JSON: subject (string), html (string fragment), preview_text (string). '
+    + 'Do NOT paste raw resume or JD text outside JSON string values.'
   );
   const maxTokens = emailType === 'payslip' ? 2560 : 2048;
   const emailTimeoutMs = emailType === 'offer_letter' ? 45000 : EMAIL_TIMEOUT_MS;
@@ -174,7 +219,7 @@ async function generateHrEmailDirect(emailType, context = {}) {
   const result = await llmJson(
     'Expert HR communications writer. Output JSON only. Keep html concise.',
     prompt,
-    { maxTokens, model, timeoutMs: emailTimeoutMs },
+    { maxTokens, model, timeoutMs: emailTimeoutMs, minOutput: 1024, budget: 8000 },
   );
   if (!result?.subject || !result?.html) {
     throw new Error('Groq email missing subject or html');
