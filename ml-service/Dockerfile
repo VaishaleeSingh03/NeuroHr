@@ -10,8 +10,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     python -m nltk.downloader punkt punkt_tab stopwords wordnet averaged_perceptron_tagger
 
-RUN python -m spacy download en_core_web_sm || true
-
 COPY . .
 RUN mkdir -p /app/models /app/data
 
