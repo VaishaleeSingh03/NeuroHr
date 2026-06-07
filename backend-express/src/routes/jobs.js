@@ -917,13 +917,14 @@ router.post('/:id/apply', auth(['candidate']), upload.single('resume'), async (r
   } catch (err) {
     if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     console.error('[apply] failed:', err.message, err.stack?.split('\n').slice(0, 3).join(' | '));
+    const isTimeout = err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' || err.status === 504;
+    const detail = err.message || err.response?.data?.detail || 'Application failed';
     const status = err.status
       || (err.name === 'ValidationError' ? 422 : null)
       || (err.response?.status === 422 ? 422 : null)
       || (err.response?.status === 503 ? 503 : null)
+      || (isTimeout ? 504 : null)
       || 500;
-    const detail = err.message || err.response?.data?.detail || 'Application failed';
-    const isTimeout = err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT';
     return res.status(status).json({
       error: isTimeout
         ? 'Resume analysis is taking longer than usual. Please wait a moment and try again.'

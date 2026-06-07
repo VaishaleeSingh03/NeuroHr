@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const fs = require('fs');
 const config = require('./config');
+const ml = require('./services/mlClient');
 const { connectDB, connectRedis } = require('./db');
 const { runSeed } = require('./lib/seedMongo');
 
@@ -90,8 +91,7 @@ async function start() {
 
 /** Reduce Render cold-start delay for screening/JD/interview analysis. */
 function wakeMlService() {
-  const url = `${config.mlServiceUrl.replace(/\/$/, '')}/health`;
-  require('axios').get(url, { timeout: 8000 })
+  ml.wakeHealth({ timeout: 8000 })
     .then(() => console.log('[ml] Warm-up ping OK'))
     .catch((err) => console.warn('[ml] Warm-up ping failed:', err.message));
 }

@@ -8,9 +8,9 @@ const { stripHtml } = require('./emailContext');
 const { SCREENING_PASS_THRESHOLD } = require('./interviewOutcome');
 const { notifyUsers } = require('./notify');
 
-/** Render cold-start + Groq screening can exceed 22s — keep ML calls alive on deploy. */
-const APPLY_PARSE_TIMEOUT_MS = 120000;
-const APPLY_SCREEN_TIMEOUT_MS = 120000;
+/** Render cold-start + Groq parse + screen can exceed 2 min — match frontend 5 min cap. */
+const APPLY_PARSE_TIMEOUT_MS = 300000;
+const APPLY_SCREEN_TIMEOUT_MS = 300000;
 const MAX_RESUME_DB_BYTES = 3 * 1024 * 1024;
 
 function buildJobContext(job) {
@@ -92,6 +92,7 @@ function trimScreeningForStorage(screening) {
 }
 
 async function processCandidateApplication({ file, job, user, body }) {
+  ml.wakeHealth().catch(() => {});
   const parsed = await ml.parseResume(file.path, file.originalname, { timeout: APPLY_PARSE_TIMEOUT_MS });
   let screening = await ml.screenResume(parsed, buildJobContext(job), { timeout: APPLY_SCREEN_TIMEOUT_MS });
   screening = trimScreeningForStorage(screening);

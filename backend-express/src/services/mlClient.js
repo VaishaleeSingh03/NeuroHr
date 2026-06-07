@@ -3,7 +3,13 @@ const FormData = require('form-data');
 const fs = require('fs');
 const config = require('../config');
 
-const client = axios.create({ baseURL: config.mlServiceUrl, timeout: 120000 });
+const client = axios.create({ baseURL: config.mlServiceUrl, timeout: 300000 });
+
+/** Wake Render ML before long parse+screen (cold start adds 30–90s). */
+async function wakeHealth({ timeout = 25000 } = {}) {
+  const url = `${config.mlServiceUrl.replace(/\/$/, '')}/health`;
+  await axios.get(url, { timeout });
+}
 
 function formatMlError(err) {
   const code = err.code || '';
@@ -20,6 +26,15 @@ function formatMlError(err) {
 }
 
 function wrapMlError(err, fallback = 'ML service error') {
+  if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
+    const wrapped = new Error(
+      `Resume analysis timed out after ${Math.round((err.config?.timeout || 300000) / 1000)}s. `
+      + `Open ${config.mlServiceUrl.replace(/\/$/, '')}/health, wait 30s, then retry apply.`,
+    );
+    wrapped.status = 504;
+    wrapped.code = err.code;
+    return wrapped;
+  }
   const wrapped = new Error(formatMlError(err) || fallback);
   wrapped.status = err.response?.status === 422 ? 422 : (err.response?.status || 500);
   wrapped.response = err.response;
@@ -32,7 +47,7 @@ async function parseResume(filePath, filename, { timeout } = {}) {
   try {
     const { data } = await client.post('/api/resume/parse', form, {
       headers: form.getHeaders(),
-      timeout: timeout || 120000,
+      timeout: timeout || 300000,
     });
     return data;
   } catch (err) {
@@ -52,7 +67,7 @@ async function screenResume(parsed, jobContext = {}, { timeout } = {}) {
       job_skills: ctx.job_skills || ctx.skills || [],
       job_nice_to_have: ctx.job_nice_to_have || ctx.nice_to_have_skills || [],
       job_experience_level: ctx.job_experience_level || ctx.experience_level || ctx.experienceLevel || '2 years',
-    }, { timeout: timeout || 120000 });
+    }, { timeout: timeout || 300000 });
     return data;
   } catch (err) {
     throw wrapMlError(err, 'Groq resume screening failed');
@@ -220,6 +235,7 @@ async function generateHrEmail(payload, { timeout } = {}) {
 }
 
 module.exports = {
+  wakeHealth,
   parseResume, screenResume, analyzeJD, generateJDFromKB, kbStatus,
   generateQuestions, generateTailoredQuestions, analyzeAnswer, analyzeVideo, analyzeFullInterview,
   generateInterviewerBriefing,
