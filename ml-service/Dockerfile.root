@@ -1,5 +1,5 @@
-# Render default: Docker Context = ml-service/ (this folder), Dockerfile Path = Dockerfile
-# Alternative: Context = repo root (.), Dockerfile Path = ml-service/Dockerfile — use Dockerfile.root instead
+# Use when Render Docker Context Directory = repo ROOT (.)
+# Dockerfile Path: ml-service/Dockerfile.root
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -8,11 +8,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ tesseract-ocr libgl1 libglib2.0-0 && \
     rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+COPY ml-service/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt && \
     python -m nltk.downloader punkt punkt_tab stopwords wordnet averaged_perceptron_tagger
 
-COPY . .
+COPY ml-service/ .
+COPY knowledgebase/ ./knowledgebase/
 
 RUN mkdir -p /app/models /app/data
 

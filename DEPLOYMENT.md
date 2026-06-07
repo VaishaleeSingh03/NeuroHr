@@ -98,9 +98,19 @@ docker build -t neurohr-ml .
 docker push <registry>/neurohr-ml:latest
 ```
 
+**Render (Docker):** use these settings so the build finds `requirements.txt` and `knowledgebase/`:
+
+| Setting | Value |
+|---------|--------|
+| Docker Context Directory | `ml-service` |
+| Dockerfile Path | `Dockerfile` |
+
+The repo includes `ml-service/knowledgebase/` (copy of root `knowledgebase/`) so the image builds when context is `ml-service/`. If you prefer repo-root context instead, set Context to `.` and Dockerfile Path to `ml-service/Dockerfile.root`.
+
 Needs:
 
 - `GROQ_API_KEY` (required for production AI)
+- `KNOWLEDGEBASE_PATH=./knowledgebase` (default in Dockerfile)
 - `MODEL_DIR` volume for `.pkl` models
 - Tesseract in the image for OCR (included in Dockerfile)
 - Optional GPU for heavier CV workloads
