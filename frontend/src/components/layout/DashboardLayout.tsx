@@ -49,8 +49,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <NotificationProvider>
-    <div className="flex min-h-screen min-h-[100dvh] relative overflow-x-hidden w-full">
-      <div className="hidden lg:block shrink-0">
+    <div className="min-h-screen min-h-[100dvh] w-full">
+      <div className="hidden lg:block">
         <Sidebar />
       </div>
 
@@ -77,8 +77,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
       </AnimatePresence>
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
-        <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between gap-3 px-4 py-3 bg-teal-dark/95 backdrop-blur-xl border-b border-aqua/20">
+      <div className="flex flex-col min-w-0 min-h-screen min-h-[100dvh] lg:ml-72">
+        <header className="lg:hidden sticky top-0 z-20 flex items-center justify-between gap-3 px-4 py-3 bg-teal-dark/95 backdrop-blur-xl border-b border-aqua/20">
           <div className="flex items-center gap-3">
             <button
               type="button"

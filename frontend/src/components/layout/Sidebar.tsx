@@ -1,7 +1,6 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 import {
   LayoutDashboard, FileSearch, Briefcase, Video, Brain,
   MessageSquare, BarChart3, UserPlus, Settings, LogOut, Sparkles,
@@ -55,8 +54,15 @@ export default function Sidebar({ onClose }: SidebarProps) {
     if (pathname !== href) router.push(href);
   };
 
+  const isDrawer = Boolean(onClose);
+
   return (
-    <aside className="w-64 sm:w-72 h-screen sticky top-0 z-30 bg-gradient-sidebar backdrop-blur-xl border-r border-aqua/20 flex flex-col shrink-0">
+    <aside
+      className={cn(
+        "w-64 sm:w-72 z-30 bg-gradient-sidebar backdrop-blur-xl border-r border-aqua/20 flex flex-col shrink-0",
+        isDrawer ? "h-full" : "fixed left-0 top-0 h-screen h-[100dvh]"
+      )}
+    >
       <div className="p-4 sm:p-6 border-b border-white/10 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-aqua rounded-xl flex items-center justify-center shadow-glow">
@@ -74,7 +80,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
         )}
       </div>
 
-      <nav className="flex-1 p-3 sm:p-4 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 min-h-0 p-3 sm:p-4 space-y-0.5 overflow-y-auto overscroll-contain">
         {items.map((item: RoleNavItem) => {
           const Icon = ICONS[item.icon];
           const active = isNavActive(pathname, item.href);
