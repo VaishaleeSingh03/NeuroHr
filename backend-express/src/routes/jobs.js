@@ -923,11 +923,16 @@ router.post('/:id/apply', auth(['candidate']), upload.single('resume'), async (r
       || (err.response?.status === 503 ? 503 : null)
       || 500;
     const detail = err.message || err.response?.data?.detail || 'Application failed';
+    const isTimeout = err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT';
     return res.status(status).json({
-      error: detail,
-      hint: detail.includes('ML') || detail.includes('Groq')
-        ? 'Wake ML at /health and ensure GROQ_API_KEY is set on the ML service'
-        : undefined,
+      error: isTimeout
+        ? 'Resume analysis is taking longer than usual. Please wait a moment and try again.'
+        : detail,
+        hint: isTimeout
+        ? 'If this keeps happening, wake the ML service at /health and retry.'
+        : detail.includes('ML') || detail.includes('Groq') || detail.includes('Gemini')
+          ? 'Set GROQ_API_KEY and/or GEMINI_API_KEY on the ML service, wake ML at /health, then retry'
+          : undefined,
     });
   }
 });

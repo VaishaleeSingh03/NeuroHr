@@ -74,6 +74,46 @@ function extractJson(text) {
   return null;
 }
 
+function geminiUrl() {
+  const model = config.geminiModel || 'gemini-2.0-flash';
+  const key = config.geminiApiKey || '';
+  const base = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  if (key.startsWith('AQ.') || key.startsWith('ya29.')) return base;
+  return `${base}?key=${key}`;
+}
+
+function geminiHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  const key = config.geminiApiKey || '';
+  if (key.startsWith('AQ.') || key.startsWith('ya29.')) {
+    headers.Authorization = `Bearer ${key}`;
+  }
+  return headers;
+}
+
+async function geminiJson(system, user, { maxTokens = 2048 } = {}) {
+  if (!config.geminiApiKey) {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+  const { data } = await axios.post(
+    geminiUrl(),
+    {
+      systemInstruction: { parts: [{ text: `${system} Reply with ONE valid JSON object only.` }] },
+      contents: [{ role: 'user', parts: [{ text: user }] }],
+      generationConfig: {
+        temperature: 0.35,
+        maxOutputTokens: maxTokens,
+        responseMimeType: 'application/json',
+      },
+    },
+    { headers: geminiHeaders(), timeout: EMAIL_TIMEOUT_MS },
+  );
+  const content = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  const parsed = extractJson(content);
+  if (!parsed) throw new Error('Gemini returned non-JSON email payload');
+  return parsed;
+}
+
 async function groqJson(system, user, { maxTokens = 2048, model } = {}) {
   if (!config.groqApiKey) {
     throw new Error('GROQ_API_KEY not configured');
@@ -105,6 +145,25 @@ async function groqJson(system, user, { maxTokens = 2048, model } = {}) {
   return parsed;
 }
 
+async function llmJson(system, user, opts = {}) {
+  const errors = [];
+  if (config.groqApiKey) {
+    try {
+      return { ...await groqJson(system, user, opts), generated_by: 'groq_direct' };
+    } catch (err) {
+      errors.push(`groq:${err.message}`);
+    }
+  }
+  if (config.geminiApiKey) {
+    try {
+      return { ...await geminiJson(system, user, opts), generated_by: 'gemini_direct' };
+    } catch (err) {
+      errors.push(`gemini:${err.message}`);
+    }
+  }
+  throw new Error(errors.join(' | ') || 'No LLM API key configured (GROQ_API_KEY or GEMINI_API_KEY)');
+}
+
 async function generateHrEmailDirect(emailType, context = {}) {
   const instruction = EMAIL_INSTRUCTIONS[emailType]
     || 'Write a professional HR email with a details table.';
@@ -118,20 +177,20 @@ async function generateHrEmailDirect(emailType, context = {}) {
   );
   const maxTokens = emailType === 'payslip' ? 2560 : 2048;
   const model = config.groqModelStrong || config.groqModelFast;
-  const result = await groqJson(
+  const result = await llmJson(
     'Expert HR communications writer. Output JSON only. Keep html concise.',
     prompt,
     { maxTokens, model },
   );
   if (!result?.subject || !result?.html) {
-    throw new Error('Groq email missing subject or html');
+    throw new Error('LLM email missing subject or html');
   }
   return {
     subject: String(result.subject).trim(),
     html: String(result.html).trim(),
     preview_text: String(result.preview_text || '').trim(),
-    generated_by: 'groq_direct',
+    generated_by: result.generated_by || 'groq_direct',
   };
 }
 
-module.exports = { generateHrEmailDirect, groqJson };
+module.exports = { generateHrEmailDirect, groqJson, geminiJson, llmJson };

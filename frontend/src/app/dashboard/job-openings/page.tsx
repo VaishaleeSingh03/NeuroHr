@@ -566,7 +566,7 @@ export default function JobOpeningsPage() {
                           className="btn-primary flex items-center gap-2"
                         >
                           {applying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                          Submit application
+                          {applying ? "Analyzing resume…" : "Submit application"}
                         </button>
                       )}
                     </div>

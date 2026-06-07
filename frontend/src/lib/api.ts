@@ -70,6 +70,7 @@ export const jobsAPI = {
   apply: (jobId: number, form: FormData) =>
     api.post(`/jobs/${jobId}/apply`, form, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: 300000,
     }),
   myApplications: () => api.get("/jobs/applications/my"),
   applicationsInbox: (params?: { job_id?: number; status?: string }) =>

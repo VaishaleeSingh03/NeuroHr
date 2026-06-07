@@ -8,8 +8,9 @@ const { stripHtml } = require('./emailContext');
 const { SCREENING_PASS_THRESHOLD } = require('./interviewOutcome');
 const { notifyUsers } = require('./notify');
 
-const APPLY_PARSE_TIMEOUT_MS = 22000;
-const APPLY_SCREEN_TIMEOUT_MS = 28000;
+/** Groq resume parse + JD screening can take 30–90s on cold ML / large PDFs. */
+const APPLY_PARSE_TIMEOUT_MS = 120000;
+const APPLY_SCREEN_TIMEOUT_MS = 120000;
 const MAX_RESUME_DB_BYTES = 3 * 1024 * 1024;
 
 function buildJobContext(job) {
