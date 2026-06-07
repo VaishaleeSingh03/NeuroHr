@@ -120,9 +120,9 @@ export default function PayrollPage() {
     setGenerating(true);
     try {
       const { data } = await payrollAPI.generate(form);
-      const payload = data as PayrollRow & { email_sent?: boolean; message?: string; email_recipient?: string };
-      if (payload.email_sent === false) {
-        toast.error(payload.message || "Payroll saved but email failed — check HR OAuth / SMTP");
+      const payload = data as PayrollRow & { email_sent?: boolean; email_queued?: boolean; message?: string; email_recipient?: string };
+      if (payload.email_sent === false && !payload.email_queued) {
+        toast.error(payload.message || "Payroll saved — employee has no email on file");
       } else {
         toast.success(payload.message || `Payslip emailed to ${payload.email_recipient}`);
       }

@@ -112,11 +112,13 @@ router.post('/leave', auth(), async (req, res) => {
   });
 
   const config = require('../config');
-  const { sendAgentEmail } = require('../lib/emailService');
+  const { sendNotifyHrEmail } = require('../lib/emailService');
+  const { runEmailInBackground } = require('../lib/emailAsync');
   const { leaveRequestHrNotice } = require('../lib/emailTemplates');
   const { stripHtml } = require('../lib/emailContext');
   const hrEmail = config.hrEmail;
-  let emailResult = { sent: false };
+  let emailResult = { sent: false, reason: 'no_hr_email_configured' };
+  let leaveMail = null;
 
   if (hrEmail) {
     try {
@@ -125,7 +127,7 @@ router.post('/leave', auth(), async (req, res) => {
         .filter(([, v]) => v && v.granted > 0)
         .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v.remaining}/${v.granted}`)
         .join(', ');
-      const { subject, html } = leaveRequestHrNotice({
+      leaveMail = leaveRequestHrNotice({
         name: emp.personalDetails?.name || 'Employee',
         employeeId: emp.employeeId || `EMP${emp.id}`,
         department: emp.department,
@@ -141,24 +143,39 @@ router.post('/leave', auth(), async (req, res) => {
         balanceSummary,
         exceedsBalance: check.exceedsBalance,
       });
-      const sent = await sendAgentEmail(hrEmail, subject, html);
-      emailResult = { ...sent, sent: true, generated_by: 'template' };
+      emailResult = await sendNotifyHrEmail(hrEmail, leaveMail.subject, leaveMail.html);
+      emailResult.generated_by = 'template';
+      if (!emailResult.sent) {
+        runEmailInBackground(
+          () => sendNotifyHrEmail(hrEmail, leaveMail.subject, leaveMail.html),
+          `leave-${leave.id}`,
+        );
+      }
     } catch (err) {
       console.error('[leave] HR notification failed:', err.message);
       emailResult = { sent: false, reason: err.message };
+      if (leaveMail) {
+        runEmailInBackground(
+          () => sendNotifyHrEmail(hrEmail, leaveMail.subject, leaveMail.html),
+          `leave-${leave.id}`,
+        );
+      }
     }
-  } else {
-    emailResult = { sent: false, reason: 'no_hr_email_configured' };
   }
 
+  const emailQueued = Boolean(hrEmail && emailResult.sent !== true);
   res.status(201).json({
     ...leave.toObject(),
-    email_sent: emailResult.sent,
+    email_sent: emailResult.sent === true,
+    email_queued: emailQueued,
+    email_channel: emailResult.channel || null,
     exceedsBalance: check.exceedsBalance,
     warning: check.exceedsBalance ? 'This request exceeds your remaining balance — excess days may be deducted from payroll' : undefined,
-    message: emailResult.sent
-      ? 'Leave request submitted — HR notified by email'
-      : `Leave request submitted but HR email failed${emailResult.reason ? `: ${emailResult.reason}` : ''}`,
+    message: !hrEmail
+      ? 'Leave request submitted — HR email not configured'
+      : emailResult.sent
+        ? 'Leave request submitted — HR notified by email'
+        : 'Leave request submitted — HR notification sending',
   });
 });
 

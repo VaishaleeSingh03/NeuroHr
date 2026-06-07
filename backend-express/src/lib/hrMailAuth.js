@@ -3,27 +3,21 @@
  * No app password. Re-auth: npm run auth:calendar (Calendar + Gmail scopes).
  */
 
-const fs = require('fs');
-const path = require('path');
 const config = require('../config');
 const { loadOAuthClient } = require('./googleCalendar');
-
-function resolvePath(p) {
-  if (!p) return null;
-  return path.isAbsolute(p) ? p : path.join(process.cwd(), p);
-}
+const { loadJsonFromEnvOrFile } = require('./oauthEnv');
 
 function loadHrOAuthBlock() {
-  const credPath = resolvePath(config.googleCalendarCredentials);
-  if (!credPath || !fs.existsSync(credPath)) return null;
-  const keys = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+  const keys = loadJsonFromEnvOrFile(
+    'GOOGLE_CALENDAR_CREDENTIALS_JSON',
+    config.googleCalendarCredentials,
+  );
+  if (!keys) return null;
   return keys.installed || keys.web || null;
 }
 
 function loadHrOAuthTokens() {
-  const tokenPath = resolvePath(config.googleCalendarToken);
-  if (!tokenPath || !fs.existsSync(tokenPath)) return null;
-  return JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+  return loadJsonFromEnvOrFile('GOOGLE_CALENDAR_TOKEN_JSON', config.googleCalendarToken);
 }
 
 function tokenHasMailScope(tokens) {

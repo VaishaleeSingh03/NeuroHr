@@ -31,4 +31,7 @@ module.exports = {
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',
   uploadDir: process.env.UPLOAD_DIR || './uploads',
   maxUploadMb: parseInt(process.env.MAX_UPLOAD_SIZE_MB || '50', 10),
+  /** template = instant branded mail (default on deploy); groq = ML+Groq with timeout fallback */
+  hrEmailMode: (process.env.HR_EMAIL_MODE || 'template').toLowerCase(),
+  hrEmailGroqTimeoutMs: parseInt(process.env.HR_EMAIL_GROQ_TIMEOUT_MS || '8000', 10),
 };

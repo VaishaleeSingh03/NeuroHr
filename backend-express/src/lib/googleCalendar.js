@@ -3,28 +3,21 @@
  * Requires credentials.json + token.json (run: node scripts/google-calendar-auth.js)
  */
 
-const fs = require('fs');
-const path = require('path');
 const { google } = require('googleapis');
 const config = require('../config');
+const { loadJsonFromEnvOrFile, resolvePath } = require('./oauthEnv');
 
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
   'https://mail.google.com/',
 ];
 
-function resolvePath(p) {
-  if (!p) return null;
-  return path.isAbsolute(p) ? p : path.join(process.cwd(), p);
-}
-
 function loadOAuthClient() {
-  const credPath = resolvePath(config.googleCalendarCredentials);
-  if (!credPath || !fs.existsSync(credPath)) {
-    return null;
-  }
-  const keys = JSON.parse(fs.readFileSync(credPath, 'utf8'));
-  const block = keys.installed || keys.web;
+  const keys = loadJsonFromEnvOrFile(
+    'GOOGLE_CALENDAR_CREDENTIALS_JSON',
+    config.googleCalendarCredentials,
+  );
+  const block = keys?.installed || keys?.web;
   if (!block) return null;
 
   const client = new google.auth.OAuth2(
@@ -33,12 +26,9 @@ function loadOAuthClient() {
     (block.redirect_uris && block.redirect_uris[0]) || 'http://localhost:9090/oauth2callback',
   );
 
-  const tokenPath = resolvePath(config.googleCalendarToken);
-  if (tokenPath && fs.existsSync(tokenPath)) {
-    client.setCredentials(JSON.parse(fs.readFileSync(tokenPath, 'utf8')));
-  } else {
-    return null;
-  }
+  const tokens = loadJsonFromEnvOrFile('GOOGLE_CALENDAR_TOKEN_JSON', config.googleCalendarToken);
+  if (!tokens) return null;
+  client.setCredentials(tokens);
   return client;
 }
 
@@ -170,9 +160,10 @@ async function createInterviewEvent({
 }
 
 function isCalendarConfigured() {
-  const credPath = resolvePath(config.googleCalendarCredentials);
-  const tokenPath = resolvePath(config.googleCalendarToken);
-  return Boolean(credPath && fs.existsSync(credPath) && tokenPath && fs.existsSync(tokenPath));
+  return Boolean(
+    loadJsonFromEnvOrFile('GOOGLE_CALENDAR_CREDENTIALS_JSON', config.googleCalendarCredentials)
+    && loadJsonFromEnvOrFile('GOOGLE_CALENDAR_TOKEN_JSON', config.googleCalendarToken),
+  );
 }
 
 module.exports = { createInterviewEvent, isCalendarConfigured, loadOAuthClient, SCOPES };

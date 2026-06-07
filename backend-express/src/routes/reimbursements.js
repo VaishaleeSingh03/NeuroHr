@@ -4,7 +4,9 @@ const path = require('path');
 const config = require('../config');
 const { auth } = require('../middleware/auth');
 const { Reimbursement, Employee, getNextSeq } = require('../models');
-const { sendAgentGroqEmail } = require('../lib/groqEmailService');
+const { buildFallbackEmail } = require('../lib/groqEmailService');
+const { sendNotifyHrEmail } = require('../lib/emailService');
+const { runEmailInBackground } = require('../lib/emailAsync');
 
 const upload = multer({ dest: config.uploadDir });
 const router = express.Router();
@@ -42,24 +44,22 @@ router.post('/', auth(['employee']), upload.single('receipt'), async (req, res) 
     status: 'pending',
   });
 
-  let emailSent = false;
   const hrEmail = config.hrEmail;
   if (hrEmail) {
     const { buildReimbursementContext } = require('../lib/emailContext');
-    const emailResult = await sendAgentGroqEmail(
-      hrEmail,
-      'reimbursement_request',
-      buildReimbursementContext(emp, claim.toObject()),
-    );
-    emailSent = emailResult.sent;
+    const ctx = buildReimbursementContext(emp, claim.toObject());
+    runEmailInBackground(async () => {
+      const mail = buildFallbackEmail('reimbursement_request', ctx);
+      return sendNotifyHrEmail(hrEmail, mail.subject, mail.html);
+    }, `reimbursement-${claim.id}`);
   }
 
   res.status(201).json({
     ...claim.toObject(),
-    email_sent: emailSent,
-    message: emailSent
-      ? 'Reimbursement submitted — HR notified by email'
-      : 'Reimbursement submitted — saved but HR email could not be sent',
+    email_queued: Boolean(hrEmail),
+    message: hrEmail
+      ? 'Reimbursement submitted — HR notification email sending'
+      : 'Reimbursement submitted — HR email not configured',
   });
 });
 

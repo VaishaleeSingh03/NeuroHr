@@ -91,9 +91,9 @@ export default function AttendancePage() {
     }
     try {
       const { data } = await attendanceAPI.requestLeave({ ...leaveForm, reason });
-      const payload = data as { warning?: string; message?: string; email_sent?: boolean };
-      if (payload.email_sent === false) {
-        toast.error(payload.message || "Leave saved but HR email failed");
+      const payload = data as { warning?: string; message?: string; email_sent?: boolean; email_queued?: boolean };
+      if (payload.email_sent === false && !payload.email_queued) {
+        toast.error(payload.message || "Leave saved but HR email not configured");
       } else if (payload.warning) {
         toast.success(payload.warning);
       } else {

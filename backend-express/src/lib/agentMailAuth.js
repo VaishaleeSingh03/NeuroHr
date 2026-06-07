@@ -3,26 +3,20 @@
  * Fallback: AGENT_SMTP_USER + AGENT_SMTP_PASSWORD in .env
  */
 
-const fs = require('fs');
-const path = require('path');
 const config = require('../config');
-
-function resolvePath(p) {
-  if (!p) return null;
-  return path.isAbsolute(p) ? p : path.join(process.cwd(), p);
-}
+const { loadJsonFromEnvOrFile } = require('./oauthEnv');
 
 function loadAgentOAuthBlock() {
-  const credPath = resolvePath(config.googleAgentCredentials);
-  if (!credPath || !fs.existsSync(credPath)) return null;
-  const keys = JSON.parse(fs.readFileSync(credPath, 'utf8'));
+  const keys = loadJsonFromEnvOrFile(
+    'GOOGLE_AGENT_CREDENTIALS_JSON',
+    config.googleAgentCredentials,
+  );
+  if (!keys) return null;
   return keys.installed || keys.web || null;
 }
 
 function loadAgentOAuthTokens() {
-  const tokenPath = resolvePath(config.googleAgentToken);
-  if (!tokenPath || !fs.existsSync(tokenPath)) return null;
-  return JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+  return loadJsonFromEnvOrFile('GOOGLE_AGENT_TOKEN_JSON', config.googleAgentToken);
 }
 
 function isAgentOAuthConfigured() {

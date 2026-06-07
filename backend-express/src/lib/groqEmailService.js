@@ -166,8 +166,8 @@ function buildFallbackEmail(emailType, context = {}) {
   }
 }
 
-async function generateGroqEmail(emailType, context, { brand = 'hr' } = {}) {
-  const enriched = {
+function enrichEmailContext(context = {}) {
+  return {
     ...context,
     org_name: config.orgName,
     app_url: config.appUrl,
@@ -176,12 +176,28 @@ async function generateGroqEmail(emailType, context, { brand = 'hr' } = {}) {
     hr_recipient: config.hrEmail,
     agent_label: `${config.orgName} HR Agent`,
   };
+}
 
+async function generateGroqEmail(emailType, context, { brand = 'hr' } = {}) {
+  const enriched = enrichEmailContext(context);
+  const mode = config.hrEmailMode || 'template';
+
+  if (mode === 'template') {
+    const mail = buildFallbackEmail(emailType, enriched);
+    return {
+      subject: mail.subject,
+      html: mail.html,
+      body_html: mail.html,
+      generated_by: 'template',
+    };
+  }
+
+  const timeoutMs = config.hrEmailGroqTimeoutMs || 8000;
   try {
-    const payload = await ml.generateHrEmail({
-      email_type: emailType,
-      context: enriched,
-    });
+    const payload = await ml.generateHrEmail(
+      { email_type: emailType, context: enriched },
+      { timeout: timeoutMs },
+    );
     const wrapBrand = brand === 'agent' ? 'agent' : 'hr';
     return {
       subject: payload.subject,
@@ -191,7 +207,7 @@ async function generateGroqEmail(emailType, context, { brand = 'hr' } = {}) {
       generated_by: 'groq',
     };
   } catch (err) {
-    console.warn(`[email] Groq ${emailType} failed, using template fallback:`, err.message);
+    console.warn(`[email] Groq ${emailType} skipped (${err.message}), using template`);
     const fallback = buildFallbackEmail(emailType, enriched);
     return {
       subject: fallback.subject,

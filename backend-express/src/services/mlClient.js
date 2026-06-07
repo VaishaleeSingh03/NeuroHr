@@ -205,9 +205,11 @@ async function calculatePayroll(payload) {
   return data;
 }
 
-async function generateHrEmail(payload) {
+async function generateHrEmail(payload, { timeout } = {}) {
   try {
-    const { data } = await client.post('/api/hr/generate-email', payload);
+    const { data } = await client.post('/api/hr/generate-email', payload, {
+      timeout: timeout || 120000,
+    });
     return data;
   } catch (err) {
     throw wrapMlError(err, 'Groq HR email generation failed');

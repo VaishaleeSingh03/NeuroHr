@@ -2,6 +2,7 @@ const express = require('express');
 const { auth } = require('../middleware/auth');
 const { Payroll, Employee, getNextSeq } = require('../models');
 const { buildPayrollForEmployee, notifyPayrollEmail } = require('../lib/payrollService');
+const { runEmailInBackground } = require('../lib/emailAsync');
 
 const router = express.Router();
 
@@ -69,16 +70,27 @@ router.post('/generate', auth(['management_admin', 'hr_recruiter']), async (req,
       deductions: req.body.deductions,
     });
     const payroll = await savePayrollRecord(employeeId, month, calc);
-    const emailResult = await notifyPayrollEmail(emp, { ...payroll.toObject(), month });
+    const payrollPayload = { ...payroll.toObject(), month };
+    const emailResult = await notifyPayrollEmail(emp, payrollPayload);
+    if (!emailResult.sent) {
+      runEmailInBackground(
+        () => notifyPayrollEmail(emp, payrollPayload),
+        `payroll-${emp.id}-${month}`,
+      );
+    }
 
     const obj = payroll.toObject();
+    const recipient = emailResult.email_recipient || emp.personalDetails?.email || null;
     res.json({
       ...obj,
-      email_sent: emailResult.sent,
-      email_recipient: emailResult.email_recipient || emp.personalDetails?.email || null,
+      email_sent: emailResult.sent === true,
+      email_queued: !emailResult.sent && Boolean(recipient),
+      email_recipient: recipient,
       message: emailResult.sent
-        ? `Payslip emailed to ${emp.personalDetails?.email}`
-        : `Payroll saved but email failed${emailResult.reason ? `: ${emailResult.reason}` : ''}`,
+        ? `Payslip emailed to ${recipient}`
+        : recipient
+          ? `Payroll saved — payslip email sending to ${recipient}`
+          : 'Payroll saved — employee has no email on file',
     });
   } catch (err) {
     console.error('[payroll] generate failed:', err.message);
@@ -105,14 +117,21 @@ router.post('/generate-batch', auth(['management_admin', 'hr_recruiter']), async
         deductions: req.body.deductions || 0,
       });
       const payroll = await savePayrollRecord(emp.id, month, calc);
-      const emailResult = await notifyPayrollEmail(emp, { ...payroll.toObject(), month });
+      const payrollPayload = { ...payroll.toObject(), month };
+      const emailResult = await notifyPayrollEmail(emp, payrollPayload);
+      if (!emailResult.sent && emp.personalDetails?.email) {
+        runEmailInBackground(
+          () => notifyPayrollEmail(emp, payrollPayload),
+          `payroll-${emp.id}-${month}`,
+        );
+      }
       results.push({
         employeeId: emp.id,
         name: emp.personalDetails?.name,
         email: emp.personalDetails?.email,
         netPay: payroll.netPay,
-        email_sent: emailResult.sent,
-        error: emailResult.sent ? undefined : emailResult.reason,
+        email_sent: emailResult.sent === true,
+        email_queued: !emailResult.sent && Boolean(emp.personalDetails?.email),
       });
     } catch (err) {
       errors.push({ employeeId: emp.id, name: emp.personalDetails?.name, error: err.message });

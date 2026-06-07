@@ -1,5 +1,6 @@
-const { Notification, User, getNextSeq } = require('../models');
+const { Notification, User, JobApplication, getNextSeq } = require('../models');
 const config = require('../config');
+const { runEmailInBackground } = require('./emailAsync');
 const { SCREENING_PASS_THRESHOLD, INTERVIEW_PASS_THRESHOLD } = require('./interviewOutcome');
 const {
   stripHtml, buildCandidateOfferContext, buildAiInterviewRejectionContext, hrMeta,
@@ -67,45 +68,54 @@ function buildRejectionNotificationPayload({
   };
 }
 
-async function notifyCandidateRejected(userId, details, io) {
-  if (!userId) return null;
-  const payload = buildRejectionNotificationPayload(details);
-  await notifyUsers([userId], payload, io);
+async function sendCandidateRejectionEmail(details, user = null) {
+  const email = details.candidateEmail || user?.email;
+  if (!email) return { sent: false, reason: 'no_candidate_email' };
+  const { sendHrGroqEmail } = require('./groqEmailService');
+  const isScreening = details.reason === 'screening';
+  if (isScreening) {
+    return sendHrGroqEmail(email, 'screening_rejected_candidate', {
+      ...hrMeta(),
+      candidate_name: details.candidateName || user?.name || 'Candidate',
+      job_title: details.jobTitle || 'the role',
+      screening_score: `${Math.round(details.jdScore || 0)}/100`,
+      threshold: SCREENING_PASS_THRESHOLD,
+    });
+  }
+  const interviewCtx = buildAiInterviewRejectionContext(
+    {
+      candidateName: details.candidateName || user?.name,
+      candidateEmail: email,
+      jobTitle: details.jobTitle,
+      jdScore: details.jdScore,
+      matchedSkills: details.matchedSkills,
+      recommendation: details.recommendation,
+      screening: details.screening,
+    },
+    {
+      interviewScore: details.finalScore,
+      compositeScore: details.compositeScore,
+      verdict: details.verdict,
+      shortlistVerdict: details.shortlistVerdict,
+    },
+    { note: details.customMessage },
+  );
+  return sendHrGroqEmail(email, 'interview_rejected_candidate', interviewCtx);
+}
 
-  const user = await User.findOne({ id: userId }).lean();
+async function notifyCandidateRejected(userId, details, io) {
+  const payload = userId ? buildRejectionNotificationPayload(details) : null;
+  if (userId && payload) {
+    await notifyUsers([userId], payload, io);
+  }
+
+  const user = userId ? await User.findOne({ id: userId }).lean() : null;
   const email = details.candidateEmail || user?.email;
   if (email) {
-    const { sendHrGroqEmail } = require('./groqEmailService');
-    const isScreening = details.reason === 'screening';
-    if (isScreening) {
-      await sendHrGroqEmail(email, 'screening_rejected_candidate', {
-        ...hrMeta(),
-        candidate_name: details.candidateName || user?.name || 'Candidate',
-        job_title: details.jobTitle || 'the role',
-        screening_score: `${Math.round(details.jdScore || 0)}/100`,
-        threshold: SCREENING_PASS_THRESHOLD,
-      });
-    } else {
-      const interviewCtx = buildAiInterviewRejectionContext(
-        {
-          candidateName: details.candidateName || user?.name,
-          candidateEmail: email,
-          jobTitle: details.jobTitle,
-          jdScore: details.jdScore,
-          matchedSkills: details.matchedSkills,
-          recommendation: details.recommendation,
-          screening: details.screening,
-        },
-        {
-          interviewScore: details.finalScore,
-          compositeScore: details.compositeScore,
-          verdict: details.verdict,
-          shortlistVerdict: details.shortlistVerdict,
-        },
-        { note: details.customMessage },
-      );
-      await sendHrGroqEmail(email, 'interview_rejected_candidate', interviewCtx);
-    }
+    runEmailInBackground(
+      () => sendCandidateRejectionEmail(details, user),
+      `reject-email-${userId || email}`,
+    );
   }
   return payload;
 }
@@ -127,13 +137,16 @@ async function notifyInterviewScheduled({ userId, candidateEmail, candidateName,
 
   if (candidateEmail) {
     const { sendHrGroqEmail } = require('./groqEmailService');
-    await sendHrGroqEmail(candidateEmail, 'interview_scheduled', {
-      ...hrMeta(),
-      candidate_name: candidateName || 'Candidate',
-      job_title: jobTitle,
-      deadline,
-      portal_url: `${config.appUrl}/dashboard/interviews`,
-    });
+    runEmailInBackground(
+      () => sendHrGroqEmail(candidateEmail, 'interview_scheduled', {
+        ...hrMeta(),
+        candidate_name: candidateName || 'Candidate',
+        job_title: jobTitle,
+        deadline,
+        portal_url: `${config.appUrl}/dashboard/interviews`,
+      }),
+      `interview-scheduled-${candidateEmail}`,
+    );
   }
 }
 
@@ -152,12 +165,15 @@ async function notifyInterviewCompleted({ userId, candidateEmail, candidateName,
 
   if (candidateEmail && !rejected) {
     const { sendHrGroqEmail } = require('./groqEmailService');
-    await sendHrGroqEmail(candidateEmail, 'interview_completed', {
-      ...hrMeta(),
-      candidate_name: candidateName || 'Candidate',
-      job_title: jobTitle,
-      portal_url: `${config.appUrl}/dashboard/interviews`,
-    });
+    runEmailInBackground(
+      () => sendHrGroqEmail(candidateEmail, 'interview_completed', {
+        ...hrMeta(),
+        candidate_name: candidateName || 'Candidate',
+        job_title: jobTitle,
+        portal_url: `${config.appUrl}/dashboard/interviews`,
+      }),
+      `interview-complete-${candidateEmail}`,
+    );
   }
 }
 
@@ -182,27 +198,30 @@ async function notifyHrInterviewResult({
   const hrEmail = config.hrEmail;
   if (hrEmail) {
     const { sendHrGroqEmail } = require('./groqEmailService');
-    await sendHrGroqEmail(hrEmail, 'interview_result_hr', {
-      ...hrMeta(),
-      candidate_name: candidateName,
-      job_title: jobTitle,
-      interview_score: `${Math.round(interviewScore || 0)}/100`,
-      composite_score: `${Math.round(compositeScore || 0)}/100`,
-      screening_score: `${Math.round(screeningScore || 0)}/100`,
-      verdict: verdict || 'Unknown',
-      shortlist_verdict: shortlistVerdict || '',
-      strengths: (strengths || []).join(', '),
-      concerns: (concerns || []).join(', '),
-      recommendation: recommendation || 'N/A',
-      applications_url: `${config.appUrl}/dashboard/applications`,
-    });
+    runEmailInBackground(
+      () => sendHrGroqEmail(hrEmail, 'interview_result_hr', {
+        ...hrMeta(),
+        candidate_name: candidateName,
+        job_title: jobTitle,
+        interview_score: `${Math.round(interviewScore || 0)}/100`,
+        composite_score: `${Math.round(compositeScore || 0)}/100`,
+        screening_score: `${Math.round(screeningScore || 0)}/100`,
+        verdict: verdict || 'Unknown',
+        shortlist_verdict: shortlistVerdict || '',
+        strengths: (strengths || []).join(', '),
+        concerns: (concerns || []).join(', '),
+        recommendation: recommendation || 'N/A',
+        applications_url: `${config.appUrl}/dashboard/applications`,
+      }),
+      `interview-result-hr-${candidateName}`,
+    );
   }
 }
 
 async function emailRecruiterMessage({ candidateEmail, candidateName, jobTitle, message }) {
-  if (!candidateEmail) return;
+  if (!candidateEmail) return { sent: false, reason: 'no_candidate_email' };
   const { sendHrGroqEmail } = require('./groqEmailService');
-  await sendHrGroqEmail(candidateEmail, 'recruiter_message', {
+  return sendHrGroqEmail(candidateEmail, 'recruiter_message', {
     ...hrMeta(),
     candidate_name: candidateName || 'Candidate',
     job_title: jobTitle,
@@ -211,7 +230,7 @@ async function emailRecruiterMessage({ candidateEmail, candidateName, jobTitle, 
 }
 
 async function notifyHumanInterviewScheduled(app, aiInterview) {
-  const { buildInterviewerBriefing } = require('./interviewerBriefing');
+  const { buildStaticInterviewerBriefing } = require('./interviewerBriefing');
   const { getResumeAttachment } = require('./resumeAttachment');
   const { sendHrGroqEmail } = require('./groqEmailService');
   const hi = app.humanInterview || {};
@@ -235,51 +254,56 @@ async function notifyHumanInterviewScheduled(app, aiInterview) {
     ? Math.round(aiInterview.screeningScore)
     : Math.round(app.jdScore || app.screening?.total_score || 0);
 
-  let invitesSent = 0;
+  const sendTasks = [];
 
   if (app.candidateEmail) {
-    const result = await sendHrGroqEmail(app.candidateEmail, 'human_interview_candidate', {
-      ...hrMeta(),
-      candidate_name: app.candidateName || 'Candidate',
-      job_title: app.jobTitle,
-      interview_date: hi.interviewDate,
-      interview_time: hi.interviewTime,
-      duration_minutes: hi.durationMinutes || 60,
-      meet_link: meetLink,
-      interviewers: (hi.interviewers || []).map((i) => i.name).join(', '),
-      notes: stripHtml(hi.notes || '').slice(0, 1000),
-    });
-    if (result.sent) invitesSent += 1;
-  }
-
-  for (const interviewer of hi.interviewers || []) {
-    if (!interviewer.email) continue;
-    const { html: briefingHtml } = await buildInterviewerBriefing(app, aiInterview, interviewer);
-    const result = await sendHrGroqEmail(
-      interviewer.email,
-      'human_interview_interviewer',
-      {
+    sendTasks.push(
+      sendHrGroqEmail(app.candidateEmail, 'human_interview_candidate', {
         ...hrMeta(),
-        interviewer_name: interviewer.name || 'Interviewer',
-        interviewer_role: interviewer.role || interviewer.designation || 'Panel Member',
-        candidate_name: app.candidateName,
+        candidate_name: app.candidateName || 'Candidate',
         job_title: app.jobTitle,
         interview_date: hi.interviewDate,
         interview_time: hi.interviewTime,
         duration_minutes: hi.durationMinutes || 60,
         meet_link: meetLink,
-        interview_score: interviewScore,
-        composite_score: compositeScore,
-        screening_score: screeningScore,
-        ai_verdict: aiInterview?.verdict || aiInterview?.shortlistVerdict,
-        briefing_html: briefingHtml,
-        matched_skills: (app.matchedSkills || []).join(', '),
-        jd_score: app.jdScore,
-      },
-      interviewerAttachments,
+        interviewers: (hi.interviewers || []).map((i) => i.name).join(', '),
+        notes: stripHtml(hi.notes || '').slice(0, 1000),
+      }),
     );
-    if (result.sent) invitesSent += 1;
   }
+
+  for (const interviewer of hi.interviewers || []) {
+    if (!interviewer.email) continue;
+    const { html: briefingHtml } = buildStaticInterviewerBriefing(app, aiInterview, interviewer);
+    sendTasks.push(
+      sendHrGroqEmail(
+        interviewer.email,
+        'human_interview_interviewer',
+        {
+          ...hrMeta(),
+          interviewer_name: interviewer.name || 'Interviewer',
+          interviewer_role: interviewer.role || interviewer.designation || 'Panel Member',
+          candidate_name: app.candidateName,
+          job_title: app.jobTitle,
+          interview_date: hi.interviewDate,
+          interview_time: hi.interviewTime,
+          duration_minutes: hi.durationMinutes || 60,
+          meet_link: meetLink,
+          interview_score: interviewScore,
+          composite_score: compositeScore,
+          screening_score: screeningScore,
+          ai_verdict: aiInterview?.verdict || aiInterview?.shortlistVerdict,
+          briefing_html: briefingHtml,
+          matched_skills: (app.matchedSkills || []).join(', '),
+          jd_score: app.jdScore,
+        },
+        interviewerAttachments,
+      ),
+    );
+  }
+
+  const results = await Promise.all(sendTasks);
+  const invitesSent = results.filter((r) => r.sent).length;
 
   return { invitesSent, resumeAttached: !!resumeAttachment, resumeSentTo: 'interviewers_only' };
 }
@@ -296,22 +320,10 @@ async function sendCandidateOfferEmail(app) {
   };
 }
 
-async function notifyFinalDecision(app, io) {
+async function sendFinalDecisionEmails(app) {
   const fd = app.finalDecision || {};
-  const userId = app.userId || (await User.findOne({ email: app.candidateEmail }).lean())?.id;
   const selected = fd.decision === 'selected';
   let candidateEmailResult = { sent: false, reason: 'no_candidate_email' };
-
-  if (userId) {
-    await notifyUsers([userId], {
-      type: selected ? 'offer_pending' : 'application_rejected',
-      title: selected ? 'Offer letter — action required' : 'Application update',
-      message: selected
-        ? `You have been selected for ${app.jobTitle}! Check your email and accept or decline the offer in Job Openings.`
-        : `Thank you for interviewing for ${app.jobTitle}. We will not be moving forward.`,
-      link: '/dashboard/job-openings',
-    }, io);
-  }
 
   if (app.candidateEmail) {
     const { sendHrGroqEmail } = require('./groqEmailService');
@@ -334,6 +346,48 @@ async function notifyFinalDecision(app, io) {
   };
 }
 
+async function notifyFinalDecision(app, io) {
+  const fd = app.finalDecision || {};
+  const userId = app.userId || (await User.findOne({ email: app.candidateEmail }).lean())?.id;
+  const selected = fd.decision === 'selected';
+
+  if (userId) {
+    await notifyUsers([userId], {
+      type: selected ? 'offer_pending' : 'application_rejected',
+      title: selected ? 'Offer letter — action required' : 'Application update',
+      message: selected
+        ? `You have been selected for ${app.jobTitle}! Check your email and accept or decline the offer in Job Openings.`
+        : `Thank you for interviewing for ${app.jobTitle}. We will not be moving forward.`,
+      link: '/dashboard/job-openings',
+    }, io);
+  }
+
+  const appId = app.id;
+  const isOffer = selected;
+  runEmailInBackground(async () => {
+    const emailResult = await sendFinalDecisionEmails(app);
+    if (isOffer && emailResult.candidateEmailSent) {
+      const update = { 'finalDecision.offerEmailSentAt': new Date() };
+      if (emailResult.offerLetterHtml) {
+        update['finalDecision.offerLetterHtml'] = emailResult.offerLetterHtml;
+        update['finalDecision.offerLetterSubject'] = emailResult.offerLetterSubject
+          || `Offer — ${app.jobTitle}`;
+      }
+      await JobApplication.updateOne({ id: appId }, { $set: update });
+    }
+    return emailResult;
+  }, `final-decision-${appId}`);
+
+  return {
+    candidateEmailSent: null,
+    email_queued: Boolean(app.candidateEmail),
+    candidateEmailError: null,
+    recipient: app.candidateEmail || null,
+    offerLetterHtml: null,
+    offerLetterSubject: null,
+  };
+}
+
 async function notifyOfferResponse(app, response, { candidateNote, onboardResult } = {}, io) {
   const ctx = await buildCandidateOfferContext(app, { onboardResult });
   const { sendAgentGroqEmail } = require('./groqEmailService');
@@ -351,7 +405,6 @@ async function notifyOfferResponse(app, response, { candidateNote, onboardResult
     }, io);
   }
 
-  let hrEmailResult = { sent: false, reason: 'no_hr_email' };
   if (config.hrEmail) {
     const hrType = accepted ? 'offer_accepted_hr' : 'offer_rejected_hr';
     const hrCtx = {
@@ -363,12 +416,18 @@ async function notifyOfferResponse(app, response, { candidateNote, onboardResult
         ? 'Complete onboarding paperwork and assign manager'
         : 'Consider reopening the role or contacting backup candidates',
     };
-    hrEmailResult = await sendAgentGroqEmail(config.hrEmail, hrType, hrCtx);
+    runEmailInBackground(async () => {
+      const { buildFallbackEmail } = require('./groqEmailService');
+      const { sendNotifyHrEmail } = require('./emailService');
+      const mail = buildFallbackEmail(hrType, hrCtx);
+      return sendNotifyHrEmail(config.hrEmail, mail.subject, mail.html);
+    }, `offer-response-hr-${app.id}`);
   }
 
   return {
-    hrEmailSent: hrEmailResult.sent,
-    hrEmailError: hrEmailResult.reason,
+    hrEmailSent: null,
+    email_queued: Boolean(config.hrEmail),
+    hrEmailError: null,
     response: accepted ? 'accepted' : 'rejected',
   };
 }
@@ -384,5 +443,7 @@ module.exports = {
   emailRecruiterMessage,
   notifyHumanInterviewScheduled,
   notifyFinalDecision,
+  sendFinalDecisionEmails,
+  sendCandidateOfferEmail,
   notifyOfferResponse,
 };

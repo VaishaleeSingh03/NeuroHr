@@ -10,6 +10,7 @@ const config = require('../config');
 const {
   processCandidateApplication, createJobApplicationRecord, finalizeApplicationAfterScreening,
 } = require('../lib/applicationService');
+const { runEmailInBackground } = require('../lib/emailAsync');
 const {
   notifyUsers, notifyCandidateRejected, emailRecruiterMessage,
   notifyHumanInterviewScheduled, notifyFinalDecision, notifyOfferResponse,
@@ -379,16 +380,19 @@ router.post('/applications/:appId/message', auth(RECRUITER_ROLES), async (req, r
     },
   }, io);
 
-  await emailRecruiterMessage({
-    candidateEmail: app.candidateEmail,
-    candidateName: app.candidateName,
-    jobTitle: app.jobTitle,
-    message,
-  });
+  runEmailInBackground(
+    () => emailRecruiterMessage({
+      candidateEmail: app.candidateEmail,
+      candidateName: app.candidateName,
+      jobTitle: app.jobTitle,
+      message,
+    }),
+    `recruiter-message-${app.id}`,
+  );
 
   const obj = app.toObject();
   delete obj.resumeData;
-  res.json({ ...obj, hasResume: hasStoredResume(app), notified: true });
+  res.json({ ...obj, hasResume: hasStoredResume(app), notified: true, email_queued: true });
 });
 
 router.post('/applications/:appId/ai-interview-decision', auth(RECRUITER_ROLES), async (req, res) => {
@@ -570,21 +574,23 @@ router.post('/applications/:appId/schedule-human-interview', auth(RECRUITER_ROLE
   await app.save();
 
   const appWithResume = await JobApplication.findOne({ id: app.id }).lean();
-  const emailResult = await notifyHumanInterviewScheduled(appWithResume, interview);
+  runEmailInBackground(
+    () => notifyHumanInterviewScheduled(appWithResume, interview),
+    `human-interview-${app.id}`,
+  );
 
   const obj = app.toObject();
   delete obj.resumeData;
   res.json({
     ...obj,
     hasResume: hasStoredResume(appWithResume),
-    invites_sent: emailResult.invitesSent,
-    resume_attached: emailResult.resumeAttached,
+    email_queued: true,
     meet_link: meetLink,
     meet_link_source: meetLinkSource,
     calendar_event_id: calendarEventId,
     message: meetLink
-      ? `Panel scheduled — Meet link created, ${emailResult.invitesSent} email(s) sent`
-      : `Panel scheduled — emails sent (add Google Calendar credentials for auto Meet link)`,
+      ? 'Panel scheduled — Meet link created, invitation emails sending'
+      : 'Panel scheduled — invitation emails sending (add Google Calendar for auto Meet link)',
   });
 });
 
@@ -680,28 +686,17 @@ router.post('/applications/:appId/final-decision', auth(RECRUITER_ROLES), async 
   const io = req.app.get('io');
   const emailResult = await notifyFinalDecision(app, io);
 
-  if (decision === 'selected' && emailResult.candidateEmailSent) {
-    app.finalDecision.offerEmailSentAt = now;
-    if (emailResult.offerLetterHtml) {
-      app.finalDecision.offerLetterHtml = emailResult.offerLetterHtml;
-      app.finalDecision.offerLetterSubject = emailResult.offerLetterSubject || `Offer — ${app.jobTitle}`;
-    }
-    await app.save();
-  }
-
   const obj = app.toObject();
   delete obj.resumeData;
   res.json({
     ...obj,
     hasResume: hasStoredResume(app),
-    email_sent: emailResult.candidateEmailSent,
+    email_queued: emailResult.email_queued,
     email_recipient: emailResult.recipient,
     employee_onboarded: false,
-    message: emailResult.candidateEmailSent
-      ? (decision === 'selected'
-        ? `Offer letter sent to ${emailResult.recipient} — awaiting candidate acceptance in portal`
-        : `Rejection email sent to ${emailResult.recipient}`)
-      : `Decision saved but email failed${emailResult.candidateEmailError ? `: ${emailResult.candidateEmailError}` : ''}`,
+    message: decision === 'selected'
+      ? `Offer recorded — letter email sending to ${emailResult.recipient || 'candidate'}`
+      : `Decision recorded — email sending to ${emailResult.recipient || 'candidate'}`,
   });
 });
 
