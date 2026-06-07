@@ -26,18 +26,21 @@ function wrapMlError(err, fallback = 'ML service error') {
   return wrapped;
 }
 
-async function parseResume(filePath, filename) {
+async function parseResume(filePath, filename, { timeout } = {}) {
   const form = new FormData();
   form.append('file', fs.createReadStream(filePath), filename);
   try {
-    const { data } = await client.post('/api/resume/parse', form, { headers: form.getHeaders() });
+    const { data } = await client.post('/api/resume/parse', form, {
+      headers: form.getHeaders(),
+      timeout: timeout || 120000,
+    });
     return data;
   } catch (err) {
     throw wrapMlError(err, 'Resume parsing failed');
   }
 }
 
-async function screenResume(parsed, jobContext = {}) {
+async function screenResume(parsed, jobContext = {}, { timeout } = {}) {
   const ctx = typeof jobContext === 'string'
     ? { job_description: jobContext }
     : jobContext;
@@ -49,7 +52,7 @@ async function screenResume(parsed, jobContext = {}) {
       job_skills: ctx.job_skills || ctx.skills || [],
       job_nice_to_have: ctx.job_nice_to_have || ctx.nice_to_have_skills || [],
       job_experience_level: ctx.job_experience_level || ctx.experience_level || ctx.experienceLevel || '2 years',
-    });
+    }, { timeout: timeout || 120000 });
     return data;
   } catch (err) {
     throw wrapMlError(err, 'Groq resume screening failed');

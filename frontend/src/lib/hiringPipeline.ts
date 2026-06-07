@@ -258,14 +258,24 @@ export function needsAiInterviewHrReview(app: PipelineApplication | null | undef
 
 
 
-export function isOfferPending(app: PipelineApplication | null | undefined): boolean {
-
+/** True when HR or pipeline marked the candidate rejected — no offer actions. */
+export function isCandidateRejected(app: PipelineApplication | null | undefined): boolean {
   if (!app) return false;
+  return (
+    app.status === "rejected"
+    || app.status === "offer_declined"
+    || app.finalDecision?.decision === "rejected"
+    || app.finalDecision?.offerResponse === "rejected"
+    || app.aiInterviewReview?.decision === "rejected"
+  );
+}
 
-  return app.status === "offer_pending"
-
-    || (app.finalDecision?.decision === "selected" && app.finalDecision?.offerResponse === "pending");
-
+export function isOfferPending(app: PipelineApplication | null | undefined): boolean {
+  if (!app || isCandidateRejected(app)) return false;
+  return (
+    app.status === "offer_pending"
+    || (app.finalDecision?.decision === "selected" && app.finalDecision?.offerResponse === "pending")
+  );
 }
 
 
@@ -278,15 +288,16 @@ export function pipelineStatusLabel(app: PipelineApplication | null | undefined)
 
   if (app.status === "offer_declined" || app.finalDecision?.offerResponse === "rejected") return "Offer declined";
 
-  if (isOfferPending(app)) return "Offer pending — accept or decline in portal";
+  if (isCandidateRejected(app)) {
+    if (app.finalDecision?.decision === "rejected") return "Final rejection";
+    return "Rejected by HR";
+  }
 
-  if (app.finalDecision?.decision === "rejected") return "Final rejection";
+  if (isOfferPending(app)) return "Offer pending — accept or decline in portal";
 
   if (app.humanInterview?.status === "completed") return "Human panel complete — send offer or rejection";
 
   if (app.humanInterview?.status === "scheduled") return "Human panel scheduled — mark complete after round";
-
-  if (app.status === "rejected" || app.aiInterviewReview?.decision === "rejected") return "Rejected by HR";
 
   if (app.aiInterviewReview?.decision === "qualified") {
 

@@ -2,7 +2,10 @@
 
 import logging
 
+from config import get_settings
 from pipelines.groq_service import groq_json, GroqApiError
+
+_settings = get_settings()
 from pipelines.screening_utils import (
     candidate_json,
     compact_jd_payload,
@@ -30,13 +33,18 @@ def screen_fresher(candidate: dict, jd_requirements: dict) -> dict:
         "skills_match also match_pct), total_score (0-100), max_score (100), verdict, "
         "red_flags, decision_note (2-3 lines: what is good + what is weak vs JD), "
         "escalate_to_human, top_strengths (string[]), key_gaps (string[]), "
-        "matched_skills (string[] of JD skills evidenced in resume)."
+        "matched_skills (string[] of JD skills evidenced in resume).\n"
+        'Example shape: {"total_score":72,"max_score":100,"verdict":"Shortlisted",'
+        '"decision_note":"...","top_strengths":[],"key_gaps":[],"matched_skills":[],'
+        '"dimension_scores":{},"escalate_to_human":false}'
     )
 
     result = groq_json(
         "Expert HR fresher screener. Output one JSON object only.",
         prompt,
+        model=_settings.groq_model_strong,
         strict=True,
+        max_tokens=2048,
     )
     if not isinstance(result, dict):
         raise GroqApiError("Groq fresher screening returned non-object JSON.")

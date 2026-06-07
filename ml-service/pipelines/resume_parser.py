@@ -15,7 +15,10 @@ except ImportError:
     Document = None
 
 from pipelines.preprocessing import extract_skills_from_text, preprocess_pipeline
-from pipelines.groq_service import is_groq_available, groq_json
+from config import get_settings
+from pipelines.groq_service import GroqApiError, is_groq_available, groq_json
+
+_settings = get_settings()
 
 
 class ResumeParseError(Exception):
@@ -413,31 +416,41 @@ def _llm_extract_email(raw_text: str) -> str | None:
     if not is_groq_available() or len(raw_text) < 40:
         return None
     result = groq_json(
-        "Extract candidate email from resume. JSON with key email (string or null). Never invent.",
-        f"Find the email in this resume. Return null if none.\n\n{raw_text[:4000]}",
+        "Extract email from resume. JSON: {\"email\": string|null}. Never invent.",
+        f"Find email only.\n\n{raw_text[:2000]}",
+        max_tokens=128,
     )
     if isinstance(result, dict):
         return _normalize_email(result.get("email"))
     return None
 
 
-def _llm_parse_resume(raw_text: str) -> dict | None:
+def _llm_parse_resume(raw_text: str) -> dict:
     if not is_groq_available() or len(raw_text) < 80:
-        return None
+        raise ResumeParseError("GROQ_API_KEY is required for resume parsing.")
     result = groq_json(
-        "Expert resume parser. Extract ONLY facts in the resume. JSON object only. Never invent data.",
         (
-            "Parse resume. Return JSON: name, email, phone, skills[], education[], experience[], "
-            f"certifications[], projects[], summary.\n\n{raw_text[:5000]}"
+            "Resume parser. Output compact JSON with keys: "
+            "name, email, phone, skills (string[] max 20), "
+            "education ([{institution,details}] max 5), "
+            "experience ([{title,company,years}] max 6), "
+            "certifications (string[] max 8), projects ([{title,description}] max 5), "
+            "summary (string max 200 chars). Use null for unknown fields."
         ),
+        (
+            "Extract structured fields only. Do NOT dump the full resume into any field.\n\n"
+            f"{raw_text[:2800]}"
+        ),
+        model=_settings.groq_model_strong,
+        strict=True,
+        max_tokens=1200,
     )
-    return result if isinstance(result, dict) else None
+    if not isinstance(result, dict):
+        raise ResumeParseError("Groq resume parse returned invalid JSON.")
+    return result
 
 
-def _merge_parsed(rule: dict, llm: dict | None) -> dict:
-    if not llm:
-        return rule
-
+def _merge_parsed(rule: dict, llm: dict) -> dict:
     out = {**rule}
     for key in ("name", "phone", "summary"):
         val = llm.get(key)
@@ -477,7 +490,10 @@ def parse_resume(filepath: str) -> dict[str, Any]:
 
     primary_text = raw_text or char_text or ocr_text or combined_text
     processed = preprocess_pipeline(primary_text)
-    llm_data = _llm_parse_resume(combined_text)
+    try:
+        llm_data = _llm_parse_resume(combined_text)
+    except GroqApiError as exc:
+        raise ResumeParseError(f"Groq resume parse failed: {exc}") from exc
 
     resolved_email = _resolve_email(filepath, [primary_text, char_text, ocr_text, combined_text])
 
@@ -506,7 +522,7 @@ def parse_resume(filepath: str) -> dict[str, Any]:
     if not merged.get("email"):
         merged["email"] = _resolve_email(filepath, [combined_text, char_text, ocr_text, primary_text])
 
-    merged["parse_source"] = "groq+rules" if llm_data else "rules"
+    merged["parse_source"] = "groq+rules"
     if ocr_text and merged.get("email") and not extract_email(primary_text):
         merged["parse_source"] += "+ocr"
     merged["text_length"] = len(combined_text)

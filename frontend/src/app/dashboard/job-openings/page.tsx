@@ -25,7 +25,7 @@ import { getApiErrorMessage } from "@/lib/errors";
 import HiringFlowSteps, { CANDIDATE_APPLY_STEPS } from "@/components/hiring/HiringFlowSteps";
 import HiringPipelineFlow from "@/components/hiring/HiringPipelineFlow";
 import {
-  getPipelineStep, pipelineStatusLabel, isOfferPending, type HumanInterview, type FinalDecision,
+  getPipelineStep, pipelineStatusLabel, isOfferPending, isCandidateRejected, type HumanInterview, type FinalDecision,
 } from "@/lib/hiringPipeline";
 
 interface Job {
@@ -248,9 +248,9 @@ export default function JobOpeningsPage() {
               </thead>
               <tbody>
                 {applications.map((a) => {
-                  const rejected = isApplicationRejected(a.status, a.interview);
+                  const rejected = isCandidateRejected(a) || isApplicationRejected(a.status, a.interview);
                   const hired = a.status === "hired" || a.finalDecision?.offerResponse === "accepted";
-                  const offerPending = isOfferPending(a);
+                  const offerPending = isOfferPending(a) && !rejected;
                   return (
                     <tr
                       key={a.id}
@@ -348,7 +348,7 @@ export default function JobOpeningsPage() {
 
                 {selected.applied ? (() => {
                   const app = applicationForJob(selected.id);
-                  const rejected = app ? isApplicationRejected(app.status, app.interview) : false;
+                  const rejected = app ? isCandidateRejected(app) || isApplicationRejected(app.status, app.interview) : false;
                   if (rejected) {
                     const screeningOnly = app ? isScreeningRejected(app.jdScore) && app.status === "rejected" : false;
                     return (

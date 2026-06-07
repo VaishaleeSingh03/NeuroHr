@@ -19,7 +19,13 @@ const { ensureCandidateForUser, resolveUserIdForCandidate } = require('../lib/ca
 const { RECRUITER_ROLES, RESUME_VIEW_ROLES } = require('../lib/roles');
 const { createInterviewEvent, isCalendarConfigured } = require('../lib/googleCalendar');
 
-const upload = multer({ dest: config.uploadDir });
+if (!fs.existsSync(config.uploadDir)) {
+  fs.mkdirSync(config.uploadDir, { recursive: true });
+}
+const upload = multer({
+  dest: config.uploadDir,
+  limits: { fileSize: (config.maxUploadMb || 50) * 1024 * 1024 },
+});
 const router = express.Router();
 
 function hasStoredResume(app) {
@@ -732,6 +738,9 @@ router.post('/applications/:appId/offer-response', auth(['candidate']), async (r
   }
 
   const fd = app.finalDecision || {};
+  if (app.status === 'rejected' || fd.decision === 'rejected' || app.aiInterviewReview?.decision === 'rejected') {
+    return res.status(400).json({ error: 'This application was rejected — no offer to respond to' });
+  }
   if (fd.decision !== 'selected') {
     return res.status(400).json({ error: 'No offer available for this application' });
   }
@@ -858,11 +867,13 @@ router.post('/:id/apply', auth(['candidate']), upload.single('resume'), async (r
       role: { $in: ['hr_recruiter', 'management_admin'] },
       isActive: { $ne: false },
     }).lean();
-    const recruiterIds = recruiters.map((u) => u.id);
-    if (job.createdBy) recruiterIds.push(job.createdBy);
+    const recruiterIds = [...new Set([
+      ...recruiters.map((u) => u.id),
+      job.createdBy,
+    ].filter(Boolean))];
 
     const scoreLabel = Math.round(application.jdScore || 0);
-    await notifyUsers(recruiterIds, {
+    if (recruiterIds.length) await notifyUsers(recruiterIds, {
       type: shortlistResult.autoShortlisted ? 'auto_shortlisted' : 'new_application',
       title: shortlistResult.autoShortlisted
         ? `Auto-shortlisted — ${application.candidateName}`
@@ -905,9 +916,19 @@ router.post('/:id/apply', auth(['candidate']), upload.single('resume'), async (r
     });
   } catch (err) {
     if (req.file?.path && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-    const status = err.status || (err.response?.status === 422 ? 422 : 500);
+    console.error('[apply] failed:', err.message, err.stack?.split('\n').slice(0, 3).join(' | '));
+    const status = err.status
+      || (err.name === 'ValidationError' ? 422 : null)
+      || (err.response?.status === 422 ? 422 : null)
+      || (err.response?.status === 503 ? 503 : null)
+      || 500;
     const detail = err.message || err.response?.data?.detail || 'Application failed';
-    return res.status(status).json({ error: detail });
+    return res.status(status).json({
+      error: detail,
+      hint: detail.includes('ML') || detail.includes('Groq')
+        ? 'Wake ML at /health and ensure GROQ_API_KEY is set on the ML service'
+        : undefined,
+    });
   }
 });
 

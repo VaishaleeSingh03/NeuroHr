@@ -90,6 +90,10 @@ def _extract_json_text(text: str) -> str:
     return cleaned
 
 
+def _parse_json_response(text: str) -> dict | list:
+    return json.loads(_extract_json_text(text))
+
+
 def groq_chat(
     system: str,
     user: str,
@@ -126,7 +130,7 @@ def groq_chat(
         return response.choices[0].message.content
     except Exception as exc:
         _last_groq_error = str(exc)
-        logger.error("Groq chat failed (%s): %s", model or settings.groq_model, exc)
+        logger.warning("Groq chat failed (%s, json_mode=%s): %s", model or settings.groq_model, json_mode, exc)
         if strict:
             raise GroqApiError(f"Groq API error: {exc}") from exc
         return None
@@ -146,27 +150,60 @@ def groq_json(
     strict: bool = False,
     max_tokens: int = 1536,
 ) -> dict | list | None:
+    """
+    Groq-only JSON helper with retries.
+    llama-3.1-8b-instant often fails json_validate_failed on long inputs — retry without
+    response_format and/or with the strong model before giving up.
+    """
     fast_model = getattr(settings, "groq_model_fast", None) or settings.groq_model
-    json_system = f"{system} You must reply with a single valid JSON object only — no markdown, no prose."
-    text = groq_chat(
-        json_system,
-        user,
-        0.1,
-        model=model or fast_model,
-        max_tokens=max_tokens,
-        strict=strict,
-        json_mode=True,
+    strong_model = getattr(settings, "groq_model_strong", None) or fast_model
+    primary = model or fast_model
+
+    json_system = (
+        f"{system} "
+        "Reply with ONE valid JSON object only. "
+        "Every key must be double-quoted. "
+        "Do not paste raw resume or JD text outside JSON string values. "
+        "No markdown fences."
     )
-    if not text or not str(text).strip():
-        if strict:
-            raise GroqApiError(last_groq_error() or "Groq returned empty response for JSON request.")
-        return None
-    try:
-        return json.loads(_extract_json_text(text))
-    except Exception as exc:
-        snippet = str(text).strip()[:240].replace("\n", " ")
-        msg = f"Groq returned invalid JSON: {exc}. Response preview: {snippet!r}"
-        logger.error(msg)
-        if strict:
-            raise GroqApiError(msg) from exc
-        return None
+
+    attempts: list[tuple[str, bool]] = [
+        (primary, True),
+        (primary, False),
+    ]
+    if strong_model != primary:
+        attempts.extend([(strong_model, True), (strong_model, False)])
+
+    errors: list[str] = []
+    for attempt_model, use_json_mode in attempts:
+        text = groq_chat(
+            json_system,
+            user,
+            0.05,
+            model=attempt_model,
+            max_tokens=max_tokens,
+            strict=False,
+            json_mode=use_json_mode,
+        )
+        if not text or not str(text).strip():
+            errors.append(f"{attempt_model}(json={use_json_mode}):empty")
+            continue
+        try:
+            parsed = _parse_json_response(text)
+            if attempt_model != primary or not use_json_mode:
+                logger.info(
+                    "Groq JSON succeeded on retry model=%s json_mode=%s",
+                    attempt_model,
+                    use_json_mode,
+                )
+            return parsed
+        except Exception as exc:
+            snippet = str(text).strip()[:120].replace("\n", " ")
+            errors.append(f"{attempt_model}(json={use_json_mode}):{exc}: {snippet!r}")
+            continue
+
+    msg = f"Groq JSON failed after {len(attempts)} attempts: {' | '.join(errors)}"
+    logger.error(msg)
+    if strict:
+        raise GroqApiError(msg)
+    return None

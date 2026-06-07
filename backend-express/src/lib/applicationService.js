@@ -4,8 +4,13 @@ const { Candidate, JobApplication, getNextSeq } = require('../models');
 const ml = require('../services/mlClient');
 const config = require('../config');
 const { normalizeEmail } = require('./emailUtils');
+const { stripHtml } = require('./emailContext');
 const { SCREENING_PASS_THRESHOLD } = require('./interviewOutcome');
 const { notifyUsers } = require('./notify');
+
+const APPLY_PARSE_TIMEOUT_MS = 22000;
+const APPLY_SCREEN_TIMEOUT_MS = 28000;
+const MAX_RESUME_DB_BYTES = 3 * 1024 * 1024;
 
 function buildJobContext(job) {
   const matrix = job.skillsMatrix || job.skills_matrix;
@@ -21,7 +26,7 @@ function buildJobContext(job) {
   ];
   return {
     job_title: job.title || '',
-    job_description: job.description || '',
+    job_description: stripHtml(job.description || '').slice(0, 8000),
     job_skills: [...new Set(skills)],
     job_nice_to_have: [
       ...new Set([
@@ -77,9 +82,18 @@ async function getOrCreateCandidate(user, parsed, manual = {}) {
   return candidate;
 }
 
+function trimScreeningForStorage(screening) {
+  if (!screening || typeof screening !== 'object') return screening;
+  const copy = { ...screening };
+  delete copy.screening_result;
+  delete copy.harness_profile;
+  return copy;
+}
+
 async function processCandidateApplication({ file, job, user, body }) {
-  const parsed = await ml.parseResume(file.path, file.originalname);
-  const screening = await ml.screenResume(parsed, buildJobContext(job));
+  const parsed = await ml.parseResume(file.path, file.originalname, { timeout: APPLY_PARSE_TIMEOUT_MS });
+  let screening = await ml.screenResume(parsed, buildJobContext(job), { timeout: APPLY_SCREEN_TIMEOUT_MS });
+  screening = trimScreeningForStorage(screening);
 
   const manualEmail = normalizeEmail(body.contact_email) || normalizeEmail(user.email);
   if (!parsed.email && manualEmail) {
@@ -96,7 +110,11 @@ async function processCandidateApplication({ file, job, user, body }) {
   const ext = path.extname(file.originalname) || '.pdf';
   const dest = path.join(config.uploadDir, `apply_${candidate.id}_${job.id}${ext}`);
   fs.renameSync(file.path, dest);
-  const resumeData = fs.readFileSync(dest);
+  const resumeBuffer = fs.readFileSync(dest);
+  const resumeData = resumeBuffer.length <= MAX_RESUME_DB_BYTES ? resumeBuffer : undefined;
+  if (!resumeData) {
+    console.warn(`[apply] Resume ${resumeBuffer.length} bytes — stored on disk only (Mongo cap ${MAX_RESUME_DB_BYTES})`);
+  }
   const resumeFileName = file.originalname || `resume${ext}`;
   const resumeMimeType = guessResumeMimeType(resumeFileName, file.mimetype);
 

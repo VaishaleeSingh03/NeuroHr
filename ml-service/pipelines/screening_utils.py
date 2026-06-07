@@ -18,7 +18,7 @@ def compact_candidate_payload(candidate: dict) -> dict:
         "projects": (candidate.get("projects") or [])[:4],
         "certifications": (candidate.get("certifications") or [])[:5],
         "repos": (candidate.get("repo_urls") or [])[:3],
-        "resume_excerpt": (candidate.get("_raw_text") or "")[:2200],
+        "resume_excerpt": (candidate.get("_raw_text") or "")[:1400],
     }
 
 
@@ -39,7 +39,7 @@ def compact_jd_payload(jd_requirements: dict) -> str:
     ]
     excerpt = (jd_requirements.get("description_excerpt") or "").strip()
     if excerpt:
-        parts.append(f"JD excerpt:\n{excerpt[:1800]}")
+        parts.append(f"JD excerpt:\n{excerpt[:1200]}")
     return "\n".join(parts)
 
 
