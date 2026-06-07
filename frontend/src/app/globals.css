@@ -1,0 +1,326 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gradient-main min-h-screen text-body antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply text-heading;
+  }
+
+  p {
+    @apply text-body;
+  }
+}
+
+@layer components {
+  .page-container {
+    @apply space-y-6 sm:space-y-8 w-full max-w-[1600px] mx-auto min-w-0 px-0;
+  }
+
+  .interview-layout {
+    @apply flex flex-col lg:flex-row gap-4 sm:gap-6 w-full min-w-0;
+  }
+
+  .interview-panel-main {
+    @apply flex-1 min-w-0 w-full;
+  }
+
+  .interview-panel-side {
+    @apply w-full lg:w-[min(100%,380px)] lg:shrink-0 min-w-0 flex flex-col gap-4;
+  }
+
+  .interview-webcam {
+    @apply relative w-full max-w-full aspect-video min-h-[180px] sm:min-h-[200px] rounded-xl overflow-hidden bg-teal-dark;
+  }
+
+  .interview-webcam video {
+    @apply w-full h-full object-cover bg-black;
+  }
+
+  .page-header {
+    @apply animate-slide-up;
+  }
+
+  .page-title {
+    @apply text-2xl sm:text-3xl lg:text-4xl font-bold text-heading;
+  }
+
+  .page-subtitle {
+    @apply text-sm sm:text-base text-muted mt-1;
+  }
+
+  .responsive-grid {
+    @apply grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6;
+  }
+
+  .responsive-grid-2 {
+    @apply grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6;
+  }
+
+  .responsive-grid-3 {
+    @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6;
+  }
+
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-xl rounded-xl sm:rounded-2xl border border-white/50 shadow-glass
+           transition-all duration-300 hover:shadow-glow;
+  }
+
+  .glass-card-dark {
+    @apply bg-teal-dark/90 backdrop-blur-xl rounded-xl sm:rounded-2xl border border-aqua/20 shadow-glass text-inverse;
+  }
+
+  .btn-primary {
+    @apply bg-aqua hover:bg-aqua-dark text-inverse font-semibold px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl
+           transition-all duration-300 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]
+           text-sm sm:text-base;
+  }
+
+  .btn-secondary {
+    @apply bg-cream hover:bg-cream-warm text-heading font-semibold px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl
+           border border-aqua/20 transition-all duration-300 hover:border-aqua/40;
+  }
+
+  .input-field {
+    @apply w-full px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-aqua/20 bg-white/70
+           text-body focus:outline-none focus:ring-2 focus:ring-aqua/50 focus:border-aqua
+           transition-all duration-200 placeholder:text-muted text-sm sm:text-base;
+  }
+
+  .tiptap-editor .ProseMirror,
+  .rich-text-editor .tiptap,
+  .rich-text-editor .ProseMirror {
+    @apply min-h-[inherit] text-sm sm:text-base text-heading outline-none cursor-text;
+  }
+
+  .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+    @apply text-muted float-left h-0 pointer-events-none;
+    content: attr(data-placeholder);
+  }
+
+  .tiptap-editor .ProseMirror:focus,
+  .rich-text-editor .ProseMirror:focus {
+    @apply ring-2 ring-aqua/30 ring-inset;
+  }
+
+  .tiptap-viewer .ProseMirror {
+    @apply cursor-default;
+  }
+
+  .rich-text-editor .tiptap p,
+  .rich-text-editor .tiptap li {
+    @apply text-heading;
+  }
+
+  .rich-text-editor .tiptap a,
+  .rich-text-editor .ProseMirror a {
+    @apply text-aqua-dark underline cursor-pointer;
+  }
+
+  .rich-text-editor .ProseMirror strong,
+  .tiptap-editor .ProseMirror strong {
+    @apply font-bold text-teal-dark;
+  }
+
+  .rich-text-editor .ProseMirror em,
+  .tiptap-editor .ProseMirror em {
+    @apply italic text-body;
+  }
+
+  .rich-text-editor .ProseMirror u,
+  .tiptap-editor .ProseMirror u {
+    @apply underline decoration-teal-dark/70 underline-offset-2;
+  }
+
+  .rich-text-editor .tiptap p.is-editor-empty:first-child::before,
+  .rich-text-editor .tiptap .is-empty::before {
+    @apply text-muted float-left h-0 pointer-events-none;
+    content: attr(data-placeholder);
+  }
+
+  .rich-text-viewer .tiptap {
+    @apply text-sm sm:text-base outline-none;
+  }
+
+  .rich-text-viewer .tiptap p,
+  .rich-text-viewer .tiptap li {
+    @apply my-1;
+  }
+
+  /* Light background → dark readable text */
+  .rich-text-content--on-light {
+    @apply text-heading;
+  }
+
+  .rich-text-content--on-light p,
+  .rich-text-content--on-light li,
+  .rich-text-content--on-light td,
+  .rich-text-content--on-light th {
+    @apply text-heading;
+  }
+
+  .rich-text-content--on-light strong {
+    @apply font-bold text-teal-dark;
+  }
+
+  .rich-text-content--on-light em {
+    @apply italic text-body;
+  }
+
+  .rich-text-content--on-light u {
+    @apply underline text-heading;
+  }
+
+  .rich-text-content--on-light a {
+    @apply text-aqua-dark underline font-medium;
+  }
+
+  .rich-text-content--on-light code {
+    @apply bg-cream-warm text-teal-dark px-1 py-0.5 rounded text-xs font-mono;
+  }
+
+  .rich-text-content--on-light .rich-table {
+    @apply w-full text-xs border-collapse my-2;
+  }
+
+  .rich-text-content--on-light .rich-table th {
+    @apply bg-aqua/15 text-teal-dark font-semibold border border-aqua/20 px-2 py-1 text-left;
+  }
+
+  .rich-text-content--on-light .rich-table td {
+    @apply border border-aqua/15 px-2 py-1 text-heading;
+  }
+
+  /* Dark / coloured background → light readable text */
+  .rich-text-content--on-dark {
+    @apply text-inverse;
+  }
+
+  .rich-text-content--on-dark p,
+  .rich-text-content--on-dark li,
+  .rich-text-content--on-dark td,
+  .rich-text-content--on-dark th {
+    @apply text-inverse;
+  }
+
+  .rich-text-content--on-dark strong {
+    @apply font-bold text-white;
+  }
+
+  .rich-text-content--on-dark em {
+    @apply italic text-cream;
+  }
+
+  .rich-text-content--on-dark u {
+    @apply underline text-inverse;
+  }
+
+  .rich-text-content--on-dark a {
+    @apply text-cream underline font-medium;
+  }
+
+  .rich-text-content--on-dark code {
+    @apply bg-white/20 text-cream px-1 py-0.5 rounded text-xs font-mono;
+  }
+
+  .rich-text-content--on-dark .rich-table th {
+    @apply bg-white/15 text-white font-semibold border border-white/25 px-2 py-1;
+  }
+
+  .rich-text-content--on-dark .rich-table td {
+    @apply border border-white/20 px-2 py-1 text-inverse;
+  }
+
+  .score-badge {
+    @apply inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold;
+  }
+
+  .score-high {
+    @apply bg-aqua/15 text-aqua-dark;
+  }
+
+  .score-mid {
+    @apply bg-cream-warm text-heading;
+  }
+
+  .score-low {
+    @apply bg-red-50 text-red-600;
+  }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl text-inverse/80
+           hover:bg-white/10 hover:text-inverse transition-all duration-200 text-sm sm:text-base;
+  }
+
+  .sidebar-link-active {
+    @apply bg-white/20 text-inverse font-semibold shadow-lg;
+  }
+
+  .tag-skill {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 bg-aqua/10 text-accent rounded-full text-xs font-medium;
+  }
+
+  .tag-missing {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 bg-cream-warm text-body rounded-full text-xs;
+  }
+
+  .table-responsive {
+    @apply overflow-x-auto -mx-2 sm:mx-0;
+  }
+
+  .skeleton {
+    @apply animate-pulse bg-cream-warm/60 rounded-xl;
+  }
+
+  /* Groq / HR email HTML preview in portal — responsive like sent mail */
+  .offer-letter-preview {
+    @apply w-full max-w-full min-w-0 overflow-x-auto text-sm sm:text-base leading-relaxed text-body;
+  }
+
+  .offer-letter-preview table {
+    @apply w-full max-w-full border-collapse;
+  }
+
+  .offer-letter-preview td,
+  .offer-letter-preview th {
+    @apply break-words align-top p-2 sm:p-3 text-xs sm:text-sm;
+  }
+
+  @media (max-width: 640px) {
+    .offer-letter-preview table.email-stack tr,
+    .offer-letter-preview table tr {
+      @apply block mb-2;
+    }
+
+    .offer-letter-preview table.email-stack td,
+    .offer-letter-preview table.email-stack th,
+    .offer-letter-preview table td,
+    .offer-letter-preview table th {
+      @apply block w-full;
+    }
+  }
+
+  .offer-letter-preview a {
+    @apply text-accent break-all;
+  }
+
+  .offer-letter-preview img {
+    @apply max-w-full h-auto;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #00B8B8;
+  border-radius: 3px;
+}

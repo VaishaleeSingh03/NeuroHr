@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: neurohr-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend-express
+      dockerfile: Dockerfile
+    container_name: neurohr-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      ML_SERVICE_URL: http://ml-service:8001
+      REDIS_URL: redis://redis:6379/0
+      UPLOAD_DIR: /app/uploads
+      MONGODB_DB: neurohr_ai
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      redis:
+        condition: service_started
+      ml-service:
+        condition: service_started
+
+  ml-service:
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    container_name: neurohr-ml
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    environment:
+      MODEL_DIR: /app/models
+      DATA_DIR: /app/data
+    volumes:
+      - models_data:/app/models
+      - ml_data:/app/data
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: neurohr-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_ML_URL: http://localhost:8001
+    depends_on:
+      - backend
+
+volumes:
+  redis_data:
+  uploads_data:
+  models_data:
+  ml_data:

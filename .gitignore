@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+env/
+.env
+
+# Build
+.next/
+out/
+dist/
+build/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Uploads & Models
+uploads/
+models/
+*.pkl
+*.h5
+*.pt
+data/raw/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Environment
+.env
+backend/.env
+ml-service/.env
+.env.local
+.env.production
+
+# Google OAuth secrets
+backend-express/credentials.json
+backend-express/credentials-1.json
+backend-express/token.json
+backend-express/agent-token.json
+credentials.json
+credentials-1.json
+token.json
+agent-token.json
