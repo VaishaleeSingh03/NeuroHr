@@ -187,7 +187,8 @@ def groq_json(
     """
     fast_model = getattr(settings, "groq_model_fast", None) or settings.groq_model
     strong_model = getattr(settings, "groq_model_strong", None) or fast_model
-    primary = model or fast_model
+    default_model = settings.groq_model or strong_model
+    primary = model or strong_model or default_model
 
     json_system = (
         f"{system} "
@@ -197,12 +198,16 @@ def groq_json(
         "No markdown fences."
     )
 
-    attempts: list[tuple[str, bool]] = [
-        (primary, True),
-        (primary, False),
-    ]
-    if strong_model != primary:
-        attempts.extend([(strong_model, True), (strong_model, False)])
+    # Try primary, then other configured models (Render often sets STRONG=FAST=8b — still retry 70b).
+    model_order: list[str] = []
+    for candidate in (primary, strong_model, default_model, fast_model):
+        if candidate and candidate not in model_order:
+            model_order.append(candidate)
+
+    attempts: list[tuple[str, bool]] = []
+    for attempt_model in model_order:
+        attempts.append((attempt_model, True))
+        attempts.append((attempt_model, False))
 
     errors: list[str] = []
     for attempt_model, use_json_mode in attempts:

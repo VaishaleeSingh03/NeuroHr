@@ -1,4 +1,5 @@
 import importlib
+import logging
 import re
 import os
 import zipfile
@@ -19,6 +20,7 @@ from config import get_settings
 from pipelines.groq_service import GroqApiError, is_groq_available, groq_json
 
 _settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 class ResumeParseError(Exception):
@@ -441,9 +443,9 @@ def _llm_parse_resume(raw_text: str) -> dict:
             "Extract structured fields only. Do NOT dump the full resume into any field.\n\n"
             f"{raw_text[:2800]}"
         ),
-        model=_settings.groq_model_strong,
+        model=_settings.groq_model or _settings.groq_model_strong,
         strict=True,
-        max_tokens=1200,
+        max_tokens=1536,
     )
     if not isinstance(result, dict):
         raise ResumeParseError("Groq resume parse returned invalid JSON.")
@@ -493,7 +495,8 @@ def parse_resume(filepath: str) -> dict[str, Any]:
     try:
         llm_data = _llm_parse_resume(combined_text)
     except GroqApiError as exc:
-        raise ResumeParseError(f"Groq resume parse failed: {exc}") from exc
+        logger.warning("Groq resume parse failed — continuing with rule-based extraction: %s", exc)
+        llm_data = {}
 
     resolved_email = _resolve_email(filepath, [primary_text, char_text, ocr_text, combined_text])
 
@@ -522,7 +525,7 @@ def parse_resume(filepath: str) -> dict[str, Any]:
     if not merged.get("email"):
         merged["email"] = _resolve_email(filepath, [combined_text, char_text, ocr_text, primary_text])
 
-    merged["parse_source"] = "groq+rules"
+    merged["parse_source"] = "groq+rules" if llm_data else "rules"
     if ocr_text and merged.get("email") and not extract_email(primary_text):
         merged["parse_source"] += "+ocr"
     merged["text_length"] = len(combined_text)
