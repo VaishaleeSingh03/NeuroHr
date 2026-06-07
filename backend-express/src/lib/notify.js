@@ -375,7 +375,13 @@ async function notifyFinalDecision(app, io) {
       }
       await JobApplication.updateOne({ id: appId }, { $set: update });
     }
-    return emailResult;
+    if (!emailResult.candidateEmailSent) {
+      console.error(
+        `[email] Offer/final decision not sent for app ${appId}:`,
+        emailResult.candidateEmailError || 'unknown',
+      );
+    }
+    return { sent: Boolean(emailResult.candidateEmailSent), ...emailResult };
   }, `final-decision-${appId}`);
 
   return {

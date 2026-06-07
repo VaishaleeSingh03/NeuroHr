@@ -212,7 +212,9 @@ async function generateGroqEmail(emailType, context, { brand = 'hr' } = {}) {
     }
   }
 
-  const timeoutMs = config.hrEmailGroqTimeoutMs || 12000;
+  const timeoutMs = emailType === 'offer_letter'
+    ? 60000
+    : (config.hrEmailGroqTimeoutMs || 12000);
   try {
     const payload = await ml.generateHrEmail(
       { email_type: emailType, context: enriched },
@@ -230,7 +232,15 @@ async function generateGroqEmail(emailType, context, { brand = 'hr' } = {}) {
     console.warn(`[email] ML Groq ${emailType} failed:`, err.message);
   }
 
-  throw new Error(errors.join(' | ') || 'groq_unavailable');
+  const mail = buildFallbackEmail(emailType, enriched);
+  console.warn(`[email] Using template fallback for ${emailType}: ${errors.join(' | ')}`);
+  return {
+    subject: mail.subject,
+    html: mail.html,
+    body_html: mail.html,
+    generated_by: 'template_fallback',
+    groq_error: errors.join(' | ') || undefined,
+  };
 }
 
 async function sendHrGroqEmail(to, emailType, context, attachments = []) {

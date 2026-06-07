@@ -74,7 +74,7 @@ function extractJson(text) {
   return null;
 }
 
-async function groqJson(system, user, { maxTokens = 2048, model } = {}) {
+async function groqJson(system, user, { maxTokens = 2048, model, timeoutMs } = {}) {
   if (!config.groqApiKey) {
     throw new Error('GROQ_API_KEY not configured');
   }
@@ -96,7 +96,7 @@ async function groqJson(system, user, { maxTokens = 2048, model } = {}) {
         Authorization: `Bearer ${config.groqApiKey}`,
         'Content-Type': 'application/json',
       },
-      timeout: EMAIL_TIMEOUT_MS,
+      timeout: timeoutMs || EMAIL_TIMEOUT_MS,
     },
   );
   const content = data?.choices?.[0]?.message?.content;
@@ -117,7 +117,7 @@ function geminiHeaders() {
   return headers;
 }
 
-async function geminiJson(system, user, { maxTokens = 2048 } = {}) {
+async function geminiJson(system, user, { maxTokens = 2048, timeoutMs } = {}) {
   if (!config.geminiApiKey) throw new Error('GEMINI_API_KEY not configured');
   const { data } = await axios.post(
     geminiUrl(),
@@ -130,7 +130,7 @@ async function geminiJson(system, user, { maxTokens = 2048 } = {}) {
         responseMimeType: 'application/json',
       },
     },
-    { headers: geminiHeaders(), timeout: EMAIL_TIMEOUT_MS },
+    { headers: geminiHeaders(), timeout: timeoutMs || EMAIL_TIMEOUT_MS },
   );
   const parsed = extractJson(data?.candidates?.[0]?.content?.parts?.[0]?.text);
   if (!parsed) throw new Error('Gemini returned non-JSON email payload');
@@ -164,11 +164,12 @@ async function generateHrEmailDirect(emailType, context = {}) {
     + 'Return JSON: subject (string), html (string fragment), preview_text (string).'
   );
   const maxTokens = emailType === 'payslip' ? 2560 : 2048;
+  const emailTimeoutMs = emailType === 'offer_letter' ? 45000 : EMAIL_TIMEOUT_MS;
   const model = config.groqModelStrong || config.groqModelFast;
   const result = await llmJson(
     'Expert HR communications writer. Output JSON only. Keep html concise.',
     prompt,
-    { maxTokens, model },
+    { maxTokens, model, timeoutMs: emailTimeoutMs },
   );
   if (!result?.subject || !result?.html) {
     throw new Error('Groq email missing subject or html');
