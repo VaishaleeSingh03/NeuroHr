@@ -258,6 +258,29 @@ export function needsAiInterviewHrReview(app: PipelineApplication | null | undef
 
 
 
+/** Candidate has not finished the AI interview yet (scheduled or in session). */
+export function isAwaitingCandidateAiInterview(app: PipelineApplication | null | undefined): boolean {
+  if (!app?.interview) return false;
+  const st = app.interview.status;
+  return st === "scheduled" || st === "in_progress";
+}
+
+/** Candidate accepted the offer — pipeline closed for this application. */
+export function isOfferAccepted(app: PipelineApplication | null | undefined): boolean {
+  if (!app) return false;
+  return app.status === "hired" || app.finalDecision?.offerResponse === "accepted";
+}
+
+/** Bottom Shortlist / Reject — hidden until candidate completes AI interview; shown again after. */
+export function shouldShowBottomShortlistReject(app: PipelineApplication | null | undefined): boolean {
+  if (!app || app.status === "rejected") return false;
+  if (isOfferAccepted(app)) return false;
+  if (app.humanInterview?.status === "scheduled") return false;
+  return !isAwaitingCandidateAiInterview(app);
+}
+
+
+
 /** Candidate declined an offer — not the same as HR rejecting the application. */
 export function isOfferDeclined(app: PipelineApplication | null | undefined): boolean {
   if (!app) return false;

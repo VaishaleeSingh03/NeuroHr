@@ -23,6 +23,7 @@ import HiringPipelineFlow from "@/components/hiring/HiringPipelineFlow";
 import {
   getPipelineStep, canScheduleHumanInterview, canCompleteHumanPanel, canSendFinalDecision,
   needsAiInterviewHrReview, pipelineStatusLabel, isOfferDeclined,
+  isAwaitingCandidateAiInterview, shouldShowBottomShortlistReject,
   type HumanInterview, type FinalDecision, type AiInterviewReview,
 } from "@/lib/hiringPipeline";
 import {
@@ -313,6 +314,8 @@ export default function ApplicationsPage() {
   const showHumanSchedule = selected ? canScheduleHumanInterview(selected) : false;
   const showMarkPanelComplete = selected ? canCompleteHumanPanel(selected) : false;
   const showFinalDecision = selected ? canSendFinalDecision(selected) : false;
+  const awaitingCandidateAiInterview = selected ? isAwaitingCandidateAiInterview(selected) : false;
+  const showBottomShortlistReject = selected ? shouldShowBottomShortlistReject(selected) : false;
 
   useEffect(() => {
     if (showHumanSchedule) {
@@ -762,9 +765,11 @@ export default function ApplicationsPage() {
                 )}
 
                 <div id="pipeline-step-7" className="scroll-mt-24 border-t border-aqua/10 pt-4 space-y-3">
+                  {!awaitingCandidateAiInterview && (
                   <p className="text-xs font-semibold text-label flex items-center gap-1">
                     <FileText className="w-3 h-3" /> Schedule AI interview (after shortlist)
                   </p>
+                  )}
 
                   {isShortlisted && !canScheduleInterviewForApplication(selected.interview, selected) && !selected.interview && (
                     <p className="text-xs text-accent bg-aqua/10 border border-aqua/20 rounded-lg px-3 py-2">
@@ -1165,7 +1170,7 @@ export default function ApplicationsPage() {
                     </div>
                   )}
 
-                  {!selectedRejected && (
+                  {showBottomShortlistReject && (
                     <div className="flex flex-wrap gap-2 pt-2">
                       {!isShortlisted && (
                         <button
